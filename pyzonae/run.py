@@ -1,0 +1,96 @@
+# -*- coding: utf-8 -*-
+# Copyright 2026 the pyzonae authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#     http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# without warranties or conditions of any kind. See the License for the
+# specific language governing permissions and limitations under the License.
+"""
+End-to-end orchestration: load data, derive indices, classify, return a map.
+
+This is the common driver for every classification, including ``"Defaut96"``.
+It replaces the bespoke ``__main__`` blocks of the original pyKoeppen and Defaut
+scripts.
+"""
+
+import numpy as np
+from numpy import ma
+
+from .io import load_climatology
+from .derive import build_arguments
+from .classify import classify_cell
+from .cmaps import get_cmap
+
+
+def run_classification(
+    typ_classification,
+    tas_file,
+    pr_file,
+    sftlf_file=None,
+    tas_var=None,
+    pr_var=None,
+    sftlf_var=None,
+    pr_scale=1.0,
+    pr_units="mm/month",
+    tas_units="auto",
+    progress=False,
+):
+    """Compute a classification map.
+
+    Parameters
+    ----------
+    typ_classification : str
+        One of the supported classification names.
+    tas_file, pr_file : str
+        NetCDF inputs (monthly climatology).
+    sftlf_file : str, optional
+        Land-fraction file for masking ocean.
+    tas_var, pr_var, sftlf_var : str, optional
+        Override variable-name auto-detection.
+    pr_scale : float
+        Precipitation unit factor (e.g. multiply to reach mm/month).
+    tas_units : {"auto", "C", "K"}
+    progress : bool
+        Print a simple progress percentage.
+
+    Returns
+    -------
+    class_map : numpy.ma.MaskedArray (lat, lon)
+        Integer class indices, masked where undefined.
+    label_dict : dict[str, int]
+    cmap : matplotlib colormap
+    lons, lats : coordinate arrays
+    """
+    label_dict, cmap = get_cmap(typ_classification)
+
+    fields = load_climatology(
+        tas_file, pr_file,
+        tas_var=tas_var, pr_var=pr_var,
+        sftlf_file=sftlf_file, sftlf_var=sftlf_var,
+        pr_scale=pr_scale, pr_units=pr_units, tas_units=tas_units,
+    )
+    args, grid_shape, lats, lons = build_arguments(fields)
+
+    n = int(np.prod(grid_shape))
+    flat = args.reshape(args.shape[0], n)
+    class_flat = ma.masked_all(n, dtype=int)
+
+    mask = ma.getmaskarray(flat)
+    for i in range(n):
+        # Skip cells with missing temperature or precipitation.
+        if mask[0, i] or mask[4, i]:
+            continue
+        key = classify_cell(typ_classification, flat[:, i])
+        class_flat[i] = label_dict.get(key, max(label_dict.values()))
+        if progress and (i % max(1, n // 20) == 0):
+            print(f"  {100 * i // n:3d}%", end="\r")
+    if progress:
+        print("  100%")
+
+    class_map = class_flat.reshape(grid_shape)
+    return class_map, label_dict, cmap, lons, lats

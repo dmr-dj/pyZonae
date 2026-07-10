@@ -1,0 +1,27 @@
+pyZonae
+Copyright 2019-2026 the pyZonae authors
+
+This product includes software developed by:
+
+  Köppen-Geiger classifications (Kottek 2006, Peel 2007, Cannon 2012,
+  Trewartha/Belda 2014) and their colormaps, originally released as pyKoeppen:
+    Copyright 2019-2022 Didier M. Roche <didier.roche@lsce.ipsl.fr>
+    Authors: Didier M. Roche (a.k.a. dmr), Didier Paillard
+
+  Defaut (1996) bioclimatic classification, decision tree and colormap:
+    Copyright 2026 G. Bonneroy
+
+  Package architecture, xarray I/O, derived-index computation, unified
+  dispatch, plotting, synthetic test-data generator and tests:
+    Copyright 2026 the pyZonae authors
+
+All of the above are licensed under the Apache License, Version 2.0.
+You may obtain a copy of the License at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+The Defaut (1996) classification implements the bioclimatic scheme described in:
+    Defaut, B. (1996). La biogéographie des Orthoptères et la classification
+    bioclimatique. Matériaux Entomocénotiques.
+This reference is cited for scientific attribution; the source code is an
+original implementation licensed under Apache-2.0.

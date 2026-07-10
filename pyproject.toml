@@ -1,0 +1,45 @@
+# -*- coding: utf-8 -*-
+# Copyright 2019-2026 the pyZonae authors
+# SPDX-License-Identifier: Apache-2.0
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyZonae"
+version = "0.1.0"
+description = "Gridded climate classification with pluggable rule sets (Köppen-Geiger variants and Defaut 1996)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Didier M. Roche" },
+    { name = "Didier Paillard" },
+    { name = "G. Bonneroy" },
+]
+keywords = ["climate", "classification", "koppen", "koeppen", "defaut", "bioclimatic", "xarray"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+    "Intended Audience :: Science/Research",
+]
+dependencies = [
+    "numpy>=1.24",
+    "xarray>=2023.1",
+    "netCDF4>=1.6",
+    "matplotlib>=3.6",
+]
+
+[project.optional-dependencies]
+maps = ["cartopy>=0.21"]
+test = ["pytest>=7.0"]
+
+[project.scripts]
+pyzonae-classify = "pyzonae.cli:main"
+
+[tool.setuptools]
+packages = ["pyzonae", "pyzonae.classifiers"]
+
+[tool.setuptools.package-data]
+pyzonae = ["../test-data/*.nc"]
