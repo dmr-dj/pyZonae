@@ -21,7 +21,12 @@ degrees Celsius) and precipitation (in mm/month), on a common lat/lon grid, plus
 an optional land fraction used to mask out ocean cells.
 """
 
+# Defer evaluation of annotations, so modern typing syntax in this module can
+# never break older interpreters at import time.
+from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 import xarray as xr
@@ -34,7 +39,7 @@ class ClimateFields:
     pr: xr.DataArray    # (time, lat, lon) monthly precipitation, mm/month
     lats: xr.DataArray
     lons: xr.DataArray
-    landmask: xr.DataArray | None = None  # (lat, lon) boolean, True over land
+    landmask: Optional[xr.DataArray] = None  # (lat, lon) boolean, True over land
 
 
 def _guess_name(ds, candidates):
