@@ -1,3 +1,12 @@
+<!-- README shields loosely based on: https://github.com/othneildrew/Best-README-Template -->
+
+<!-- PROJECT SHIELDS -->
+[![Contributors][contributors-shield]][contributors-url]
+[![Commits][commits-shield]][commits-url]
+[![Stargazers][stars-shield]][stars-url]
+[![Issues][issues-shield]][issues-url]
+[![Apache-2.0 License][license-shield]][license-url]
+
 # pyZonae
 
 Gridded climate classification with pluggable rule sets. This is a modernized
@@ -221,3 +230,25 @@ which Kelvin guarantees everywhere. Using Celsius makes the ratio negative below
 in Kelvin, identifies the driest 3-month window, and sums that same window,
 wrapping around the December-January boundary so boreal-winter dry seasons are
 also considered.
+
+## Contact
+
+Didier M. Roche - [@dja_rosh](https://x.com/dja_rosh) - didier.roche@lsce.ipsl.fr
+
+Project Link: [https://github.com/dmr-dj/pyZonae](https://github.com/dmr-dj/pyZonae)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- Other stuff taken to get the shields correctly -->
+
+[contributors-shield]: https://img.shields.io/github/contributors/dmr-dj/pyZonae
+[contributors-url]: https://github.com/dmr-dj/pyZonae/graphs/contributors
+[commits-shield]: https://img.shields.io/github/commit-activity/y/dmr-dj/pyZonae
+[commits-url]: https://github.com/dmr-dj/pyZonae/graphs/commit-activity
+[stars-shield]: https://img.shields.io/github/stars/dmr-dj/pyZonae
+[stars-url]: https://github.com/dmr-dj/pyZonae/stargazers
+[issues-shield]: https://img.shields.io/github/issues/dmr-dj/pyZonae
+[issues-url]: https://github.com/dmr-dj/pyZonae/issues
+[license-shield]: https://img.shields.io/github/license/dmr-dj/pyZonae
+[license-url]: https://github.com/dmr-dj/pyZonae/blob/main/LICENSE
+
