@@ -237,6 +237,11 @@ Didier M. Roche - [@dja_rosh](https://x.com/dja_rosh) - didier.roche@lsce.ipsl.f
 
 Project Link: [https://github.com/dmr-dj/pyZonae](https://github.com/dmr-dj/pyZonae)
 
+## Acknowledgements
+
+Special thanks to [jypeter](https://github.com/jypeter) for development support on the Defaut96 classification
+
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- Other stuff taken to get the shields correctly -->
