@@ -63,6 +63,21 @@ python scripts/classify_map.py --classification Defaut96 \
     --sftlf test-data/synthetic_sftlf.nc --save map_defaut.png
 ```
 
+### What you should get
+
+The two commands above produce these maps. The synthetic world has two
+idealized continents, so the climate bands are symmetric about the equator —
+which makes it easy to check at a glance that a classification is behaving
+sensibly.
+
+| Köppen-Geiger (Peel et al. 2007) | Defaut (1996) |
+|---|---|
+| ![Köppen-Geiger classification of the synthetic climatology](docs/images/synthetic_peel.png) | ![Defaut 1996 classification of the synthetic climatology](docs/images/synthetic_Defaut96.png) |
+
+Köppen-Geiger shows the familiar A→B→C→D→E progression from equator to pole;
+Defaut shows the analogous eremic → arid → … → axeric-nival gradient over the
+same fields.
+
 ### Data conventions
 
 The synthetic files follow the PMIP4/AWIESM convention so they work with both
@@ -146,8 +161,10 @@ pyzonae/
     └── defaut.py       # Defaut tree, returns a key string
 scripts/
 ├── make_synthetic_data.py   # writes the synthetic NetCDFs into test-data/
+├── make_readme_figures.py   # regenerates the example maps in docs/images/
 └── classify_map.py          # thin wrapper around pyzonae.cli
 test-data/                   # empty in git; populated by make_synthetic_data.py
+docs/images/                 # example maps shown in this README
 tests/
 └── test_pipeline.py         # pytest; builds its own data, needs no files on disk
 ```
