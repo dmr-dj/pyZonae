@@ -36,14 +36,18 @@ pip install .
 
 ## Quick start
 
-The repository ships with a **synthetic** global climatology so it is fully
-self-contained — no external or private data required. Generate it once:
+No external or private data is required: pyZonae ships a **generator** for a
+synthetic global climatology rather than the data files themselves (they are
+reproducible, so there is no reason to version binaries). Generate them first —
+this is a required first step, the `test-data/` directory starts out empty:
 
 ```bash
 python scripts/make_synthetic_data.py --outdir test-data
 ```
 
-Then classify and plot:
+This writes `synthetic_tas_monClim.nc`, `synthetic_pr_monClim.nc` and
+`synthetic_sftlf.nc`. The generator is deterministic (fixed seed), so everyone
+gets identical files. Then classify and plot:
 
 ```bash
 # Köppen-Geiger (Peel)
@@ -110,6 +114,9 @@ python scripts/classify_map.py --classification Defaut96 \
 
 ## Library use
 
+(Assumes you have run `make_synthetic_data.py` first, or substitute your own
+NetCDF paths.)
+
 ```python
 from pyzonae import run_classification
 from pyzonae.plotting import plot_classification
@@ -133,14 +140,16 @@ pyzonae/
 ├── cmaps.py            # colors + label dicts, one registry
 ├── plotting.py         # shared categorical map (cartopy optional)
 ├── run.py              # load -> derive -> classify -> map
+├── cli.py              # argparse CLI (installed as `pyzonae-classify`)
 └── classifiers/
     ├── koeppen.py      # KG/Trewartha logic (verbatim, NumPy-2 compatible)
     └── defaut.py       # Defaut tree, returns a key string
 scripts/
-├── make_synthetic_data.py   # generates test-data/*.nc
-└── classify_map.py          # CLI
+├── make_synthetic_data.py   # writes the synthetic NetCDFs into test-data/
+└── classify_map.py          # thin wrapper around pyzonae.cli
+test-data/                   # empty in git; populated by make_synthetic_data.py
 tests/
-└── test_pipeline.py         # pytest, no external data needed
+└── test_pipeline.py         # pytest; builds its own data, needs no files on disk
 ```
 
 ### How a classifier plugs in
