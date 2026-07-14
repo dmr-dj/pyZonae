@@ -160,33 +160,73 @@ fig, ax = plot_classification(class_map, lons, lats, labels, cmap)
 
 ```
 pyzonae/
-├── io.py               # xarray loading (replaces lcm_utils/netCDF4)
-├── derive.py           # 15 derived indices, incl. Gaussen 3-driest-months
-├── classify.py         # dispatch: name -> classifier  (Defaut96 lives here)
-├── cmaps.py            # colors + label dicts, one registry
-├── plotting.py         # shared categorical map (cartopy optional)
-├── run.py              # load -> derive -> classify -> map
-├── cli.py              # argparse CLI (installed as `pyzonae-classify`)
-└── classifiers/
-    ├── koeppen.py      # KG/Trewartha logic (verbatim, NumPy-2 compatible)
-    └── defaut.py       # Defaut tree, returns a key string
+├── io.py                   # xarray loading (replaces lcm_utils/netCDF4);
+│                           #   units, land mask, orography, frost line
+├── derive.py               # the 17 derived indices, shared by every scheme
+│                           #   (Koeppen 0-12, Defaut 13-14, Holdridge 15-16)
+├── classify.py             # dispatch: name -> classifier
+├── cmaps.py                # colours + label dicts, one registry
+├── run.py                  # load -> derive -> classify -> map
+├── cli.py                  # argparse CLI (installed as `pyzonae-classify`)
+│
+├── classifiers/            # the rules themselves — one module per scheme
+│   ├── koeppen.py          #   KG/Trewartha logic (verbatim, NumPy-2 compatible)
+│   ├── defaut.py           #   Defaut tree; Qn2 and its polynomial boundaries
+│   └── holdridge.py        #   biotemperature, PET ratio, latitudinal regions,
+│                           #     altitudinal belts; fuzzy vs strict thresholds
+│
+├── plotting.py             # shared categorical map (cartopy optional);
+│                           #   only labels the classes actually present
+├── plotting_holdridge.py   # Holdridge MAP: three-panel legend, since its zones
+│                           #   are composite (region x belt x province)
+│
+├── diagrams.py             # decision-space dispatch: plot_diagram(typ, ...)
+├── decision_space.py       #   Defaut in (Qn2, T): boundary curves clipped by
+│                           #     probing the tree; two panels (annual mean / tc)
+├── holdridge_triangle.py   #   Holdridge's triangular, hexagon-tiled diagram
+│
+└── legend_grid.py          # UNUSED: a Botti-style grid legend for Defaut, kept
+                            #   as an alternative to the decision-space diagram
 scripts/
-├── make_synthetic_data.py   # writes the synthetic NetCDFs into test-data/
-├── make_readme_figures.py   # regenerates the example maps in docs/images/
-└── classify_map.py          # thin wrapper around pyzonae.cli
-test-data/                   # empty in git; populated by make_synthetic_data.py
-docs/images/                 # example maps shown in this README
+├── make_synthetic_data.py  # writes the synthetic NetCDFs into test-data/
+├── make_readme_figures.py  # regenerates the example maps in docs/images/
+└── classify_map.py         # thin wrapper around pyzonae.cli
+test-data/                  # empty in git; populated by make_synthetic_data.py
+docs/images/                # example maps shown in this README
 tests/
-└── test_pipeline.py         # pytest; builds its own data, needs no files on disk
+└── test_pipeline.py        # 27 tests; builds its own data, needs no files on disk
 ```
+
+Two plotting families, and the distinction matters:
+
+* **Maps** (`plotting.py`, `plotting_holdridge.py`) — where each class falls on
+  the globe. Every classification has one.
+* **Decision-space diagrams** (`diagrams.py` and the two modules under it) — why:
+  each cell placed at its coordinates in the classifying variables, with the
+  boundaries drawn from the classifier's own functions. Only `Defaut96` and
+  `Holdridge` have one; see the section above for why Köppen-Geiger cannot.
 
 ### How a classifier plugs in
 
 Every classifier takes the same per-cell index vector (see `derive.py`) and
-returns a **key string** (e.g. `"Cfb"`, `"HA1a,b"`). `cmaps.py` maps that key to
-an integer and a color. To add a new scheme you write one `get_*` function that
-returns keys, one `*_cmap_*` function returning `(dict, colormap)`, and register
-both — no change to the loading, plotting, or main loop.
+returns a **key string** (e.g. `"Cfb"`, `"HA1a,b"`, `"Boreal Basal Humid"`).
+`cmaps.py` maps that key to an integer and a colour. In the common case, adding a
+scheme means writing one `get_*` function that returns keys and one `*_cmap_*`
+function returning `(dict, colormap)`, then registering both — the loading,
+plotting and main loop are untouched.
+
+Holdridge showed what the two extra cases look like:
+
+* **It needed new derived indices** (biotemperature, sea-level biotemperature).
+  These were appended to the shared stack in `derive.py` as slots 15–16, which
+  keeps the existing slots stable — Köppen and Defaut were unaffected.
+* **It needed a new input** (surface elevation). `run.py` raises an explanatory
+  error if `Holdridge` is requested without `--orog`, while the other schemes
+  keep working without it. A scheme may add an input without imposing it on
+  everyone.
+
+If a scheme also has a low-dimensional decision space, add a plotter and register
+it in `diagrams.py`. Not every scheme does — see above.
 
 ## Notes on modernization
 
