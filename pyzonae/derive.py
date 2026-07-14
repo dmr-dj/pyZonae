@@ -32,6 +32,8 @@ variables the Defaut scheme needs:
    12: P_dry    number of dry months (P <= 60)     (count)
    13: P_ann_mm annual precipitation               (mm)  [alias of 5, explicit]
    14: P_sec3   driest 3 consecutive months (Gaussen, mm)
+   15: Tbio     Holdridge biotemperature           (degC)
+   16: T0bio    Holdridge sea-level biotemperature (degC)
 
 Summer/winter half-years follow pyKoeppen: Apr-Sep is "summer" in the northern
 hemisphere and is swapped with the winter slice south of the equator.
@@ -40,7 +42,7 @@ hemisphere and is swapped with the winter slice south of the equator.
 import numpy as np
 from numpy import ma
 
-N_ARGS = 15
+N_ARGS = 17
 
 
 def _maxminsum_slice(mon, lo, hi):
@@ -172,6 +174,34 @@ def build_arguments(fields):
     args[12] = P_dry
     args[13] = P_ann                       # explicit mm alias for Defaut
     args[14] = ma.masked_invalid(P_sec3)
+
+    # --- Holdridge biotemperature (slots 15, 16) --------------------------
+    # Tbio = sum( T[i] if 0 < T[i] < 30 else 0 ) / 12  -- denominator is 12, so
+    # out-of-range months contribute zero rather than being dropped.
+    T_c = mon_TAS.filled(np.nan)
+    contrib = np.where((T_c > 0.0) & (T_c < 30.0), T_c, 0.0)
+    contrib = np.where(np.isnan(T_c), np.nan, contrib)
+    with np.errstate(invalid="ignore"):
+        Tbio = np.nansum(contrib, axis=0) / 12.0
+    Tbio = np.where(np.all(np.isnan(T_c), axis=0), np.nan, Tbio)
+
+    if fields.orog is not None:
+        elev_m = np.asarray(fields.orog.values, dtype=float)
+        # Lapse the monthly fields to sea level (-6.0 degC/km), then re-apply the
+        # same biotemperature formula.
+        T_sl = T_c + 6.0 * (elev_m[None, ...] / 1000.0)
+        contrib_sl = np.where((T_sl > 0.0) & (T_sl < 30.0), T_sl, 0.0)
+        contrib_sl = np.where(np.isnan(T_sl), np.nan, contrib_sl)
+        with np.errstate(invalid="ignore"):
+            T0bio = np.nansum(contrib_sl, axis=0) / 12.0
+        T0bio = np.where(np.all(np.isnan(T_sl), axis=0), np.nan, T0bio)
+    else:
+        # No orography: Holdridge cannot be run (run.py raises); for the other
+        # classifications these slots are simply unused.
+        T0bio = np.full(grid_shape, np.nan)
+
+    args[15] = ma.masked_invalid(Tbio)
+    args[16] = ma.masked_invalid(T0bio)
 
     # Propagate the core temperature/precip mask to all layers.
     core_mask = ma.getmaskarray(T_min) | ma.getmaskarray(P_min)

@@ -24,16 +24,31 @@ Supported classifications (pass as ``typ_classification``):
 High-level usage::
 
     from pyzonae import run_classification
-    class_map, label_dict, cmap = run_classification(
+    class_map, label_dict, cmap, lons, lats = run_classification(
         typ_classification="Defaut96",
         tas_file="test-data/tas.nc",
         pr_file="test-data/pr.nc",
     )
+
+Besides the map, Defaut96 and Holdridge can be drawn in their own *decision
+space* -- every cell placed at its coordinates in the classifying variables, with
+the decision boundaries on top::
+
+    from pyzonae import load_climatology, build_arguments, plot_diagram
+    fields = load_climatology(tas_file, pr_file, sftlf_file=..., orog_file=...)
+    args, shape, lats, lons = build_arguments(fields)
+    fig, ax = plot_diagram("Holdridge", class_map, args, label_dict, cmap)
 """
 
 from .classify import classify_cell, CLASSIFICATIONS
 from .cmaps import get_cmap
 from .run import run_classification
+from .derive import build_arguments
+from .io import load_climatology
+from .diagrams import plot_diagram, DIAGRAMS
 
-__all__ = ["classify_cell", "CLASSIFICATIONS", "get_cmap", "run_classification"]
+__all__ = [
+    "classify_cell", "CLASSIFICATIONS", "get_cmap", "run_classification",
+    "build_arguments", "load_climatology", "plot_diagram", "DIAGRAMS",
+]
 __version__ = "0.1.0"

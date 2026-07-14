@@ -87,6 +87,28 @@ def build(nlat=48, nlon=96, seed=0):
     land += (lat2d < -70).astype(float)
     land = np.clip(land, 0, 1)
 
+    # Orography: a mountain range along each continent, rising high enough to
+    # cross Holdridge's altitudinal belts (basal -> montane -> alpine -> nival).
+    # Without real relief, a Holdridge test would only ever see the basal belt.
+    orog = np.zeros((nlat, nlon))
+    for lon_c, lat_c, peak in [(80.0, 20.0, 5200.0), (260.0, 5.0, 4600.0)]:
+        # A ridge elongated in latitude, narrow in longitude.
+        dlon = np.minimum(np.abs(lon2d - lon_c), 360.0 - np.abs(lon2d - lon_c))
+        ridge = peak * np.exp(-(dlon ** 2) / (2 * 9.0 ** 2)) \
+                     * np.exp(-((lat2d - lat_c) ** 2) / (2 * 28.0 ** 2))
+        orog = np.maximum(orog, ridge)
+    # A broad, moderate plateau to populate the intermediate belts.
+    orog += 400.0 * np.exp(-((lat2d - 45.0) ** 2) / (2 * 12.0 ** 2)) \
+                  * ((lon2d > 30) & (lon2d < 120)).astype(float)
+    orog = orog * land          # elevation only over land
+    orog = np.clip(orog, 0.0, None)
+
+    # Make the temperature field physically consistent with that relief: cool it
+    # with a -6.5 degC/km environmental lapse rate. Without this the mountains
+    # would be as warm as the lowlands, sea-level and actual biotemperature would
+    # coincide everywhere, and Holdridge's altitudinal belts would never trigger.
+    tas = tas - 6.5 * (orog[None, :, :] / 1000.0)
+
     def da(data, name, units, long_name):
         return xr.DataArray(
             data, dims=("time", "lat", "lon"),
@@ -108,7 +130,11 @@ def build(nlat=48, nlon=96, seed=0):
         land * 100.0, dims=("lat", "lon"), coords={"lat": lats, "lon": lons},
         name="sftlf", attrs={"units": "%", "long_name": "land area fraction"},
     ).to_dataset()
-    return ds_t, ds_p, ds_m
+    ds_o = xr.DataArray(
+        orog, dims=("lat", "lon"), coords={"lat": lats, "lon": lons},
+        name="orog", attrs={"units": "m", "long_name": "surface altitude"},
+    ).to_dataset()
+    return ds_t, ds_p, ds_m, ds_o
 
 
 def main():
@@ -119,11 +145,12 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
     os.makedirs(a.outdir, exist_ok=True)
-    ds_t, ds_p, ds_m = build(a.nlat, a.nlon, a.seed)
+    ds_t, ds_p, ds_m, ds_o = build(a.nlat, a.nlon, a.seed)
     ds_t.to_netcdf(os.path.join(a.outdir, "synthetic_tas_monClim.nc"))
     ds_p.to_netcdf(os.path.join(a.outdir, "synthetic_pr_monClim.nc"))
     ds_m.to_netcdf(os.path.join(a.outdir, "synthetic_sftlf.nc"))
-    print("wrote synthetic_{tas,pr,sftlf} to", a.outdir)
+    ds_o.to_netcdf(os.path.join(a.outdir, "synthetic_orog.nc"))
+    print("wrote synthetic_{tas,pr,sftlf,orog} to", a.outdir)
 
 
 if __name__ == "__main__":

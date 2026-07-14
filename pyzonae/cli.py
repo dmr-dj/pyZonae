@@ -18,6 +18,10 @@ import sys
 
 from pyzonae import run_classification, CLASSIFICATIONS
 from pyzonae.plotting import plot_classification
+from pyzonae.plotting_holdridge import plot_holdridge
+from pyzonae.diagrams import plot_diagram, DIAGRAMS
+from pyzonae.io import load_climatology
+from pyzonae.derive import build_arguments
 
 
 def main():
@@ -26,6 +30,20 @@ def main():
     ap.add_argument("--tas", required=True, help="monthly temperature NetCDF")
     ap.add_argument("--pr", required=True, help="monthly precipitation NetCDF")
     ap.add_argument("--sftlf", default=None, help="land-fraction NetCDF (optional)")
+    ap.add_argument("--orog", default=None,
+                    help="surface elevation NetCDF (REQUIRED for --classification Holdridge)")
+    ap.add_argument("--orog-var", default=None,
+                    help="elevation variable name (default: auto-detect orog/elevation/...)")
+    ap.add_argument("--holdridge-rule", default="fuzzy", choices=["fuzzy", "strict"],
+                    help="Holdridge thresholds: 'fuzzy' (Lugo et al. 1999, default) "
+                         "or 'strict' (Holdridge's originals)")
+    ap.add_argument("--frost-line", default=None,
+                    help="frost line for the WarmTemperate/Subtropical split: "
+                         "omit to leave them merged (default), 'coldest_month' for a "
+                         "threshold on the coldest monthly tas, or a path to a NetCDF "
+                         "holding a frost-free mask")
+    ap.add_argument("--frost-threshold", type=float, default=0.0,
+                    help="threshold in degC used with --frost-line coldest_month")
     ap.add_argument("--tas-var", default=None,
                     help="temperature variable name (default: auto-detect tas/t2m/tmp/...)")
     ap.add_argument("--pr-var", default=None,
@@ -39,6 +57,17 @@ def main():
     ap.add_argument("--pr-scale", type=float, default=1.0,
                     help="extra multiplicative factor applied after --pr-units")
     ap.add_argument("--save", default=None, help="output image path")
+    ap.add_argument("--diagram", action="store_true",
+                    help="draw the decision-space diagram instead of the map "
+                         f"(available for: {', '.join(DIAGRAMS)})")
+    ap.add_argument("--hexagons", action="store_true",
+                    help="Holdridge diagram: underlay the hexagonal life-zone cells")
+    ap.add_argument("--no-markers", action="store_true",
+                    help="diagram: do not encode the third axis as marker shape")
+    ap.add_argument("--facet", action="store_true",
+                    help="Defaut diagram: one panel per continentality band")
+    ap.add_argument("--point-size", type=float, default=None,
+                    help="diagram: marker area (default 12 for Defaut, 14 for Holdridge)")
     ap.add_argument("--no-coastlines", action="store_true")
     ap.add_argument("--progress", action="store_true")
     a = ap.parse_args()
@@ -46,17 +75,54 @@ def main():
     m, labels, cmap, lons, lats = run_classification(
         typ_classification=a.classification,
         tas_file=a.tas, pr_file=a.pr, sftlf_file=a.sftlf,
+        orog_file=a.orog, orog_var=a.orog_var,
+        holdridge_rule=a.holdridge_rule,
+        frost_line=a.frost_line, frost_threshold=a.frost_threshold,
         tas_var=a.tas_var, pr_var=a.pr_var, sftlf_var=a.sftlf_var,
         tas_units=a.tas_units, pr_scale=a.pr_scale, pr_units=a.pr_units,
         progress=a.progress,
     )
     print(f"Classified {m.count()} cells with '{a.classification}'.")
 
-    fig, _ = plot_classification(
-        m, lons, lats, labels, cmap,
-        title=f"{a.classification} classification",
-        coastlines=not a.no_coastlines,
-    )
+    if a.diagram:
+        if a.classification not in DIAGRAMS:
+            sys.exit(
+                f"--diagram is not available for '{a.classification}'.\n"
+                f"Available: {', '.join(DIAGRAMS)}. The Koeppen-Geiger variants "
+                f"classify on many interacting criteria and have no faithful "
+                f"low-dimensional picture."
+            )
+        # The diagram needs the derived indices, not just the class map.
+        fields = load_climatology(
+            a.tas, a.pr, tas_var=a.tas_var, pr_var=a.pr_var,
+            sftlf_file=a.sftlf, sftlf_var=a.sftlf_var,
+            orog_file=a.orog, orog_var=a.orog_var,
+            tas_units=a.tas_units, pr_units=a.pr_units, pr_scale=a.pr_scale,
+        )
+        fields_args, _, _, _ = build_arguments(fields)
+        kw = {"markers": not a.no_markers}
+        if a.point_size is not None:
+            kw["point_size"] = a.point_size
+        if a.classification == "Holdridge":
+            kw["rule"] = a.holdridge_rule
+            kw["hexagons"] = a.hexagons
+        else:
+            kw["facet"] = a.facet
+        fig, _ = plot_diagram(a.classification, m, fields_args, labels, cmap, **kw)
+    elif a.classification == "Holdridge":
+        # Holdridge zones are composite (region x belt x province), so a flat
+        # colorbar of several hundred entries is useless. Use the axis-wise legend.
+        fig, _ = plot_holdridge(
+            m, lons, lats, labels, cmap,
+            title="Holdridge life zones",
+            coastlines=not a.no_coastlines,
+        )
+    else:
+        fig, _ = plot_classification(
+            m, lons, lats, labels, cmap,
+            title=f"{a.classification} classification",
+            coastlines=not a.no_coastlines,
+        )
     if a.save:
         fig.savefig(a.save, dpi=120, bbox_inches="tight")
         print("saved", a.save)

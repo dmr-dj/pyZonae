@@ -32,6 +32,11 @@ def run_classification(
     tas_file,
     pr_file,
     sftlf_file=None,
+    orog_file=None,
+    orog_var=None,
+    frost_line=None,
+    frost_threshold=0.0,
+    holdridge_rule="fuzzy",
     tas_var=None,
     pr_var=None,
     sftlf_var=None,
@@ -68,10 +73,20 @@ def run_classification(
     """
     label_dict, cmap = get_cmap(typ_classification)
 
+    if typ_classification == "Holdridge" and orog_file is None:
+        raise ValueError(
+            "The Holdridge classification requires surface elevation. "
+            "Pass orog_file=... (CLI: --orog). It is used to compute the "
+            "sea-level biotemperature, which sets the latitudinal region, and "
+            "the altitudinal belt. The other classifications do not need it."
+        )
+
     fields = load_climatology(
         tas_file, pr_file,
         tas_var=tas_var, pr_var=pr_var,
         sftlf_file=sftlf_file, sftlf_var=sftlf_var,
+        orog_file=orog_file, orog_var=orog_var,
+        frost_line=frost_line, frost_threshold=frost_threshold,
         pr_scale=pr_scale, pr_units=pr_units, tas_units=tas_units,
     )
     args, grid_shape, lats, lons = build_arguments(fields)
@@ -81,11 +96,21 @@ def run_classification(
     class_flat = ma.masked_all(n, dtype=int)
 
     mask = ma.getmaskarray(flat)
+    ff_flat = None
+    if fields.frost_free is not None:
+        ff_flat = np.asarray(fields.frost_free.values, dtype=float).reshape(-1)
+
     for i in range(n):
         # Skip cells with missing temperature or precipitation.
         if mask[0, i] or mask[4, i]:
             continue
-        key = classify_cell(typ_classification, flat[:, i])
+        opts = {}
+        if typ_classification == "Holdridge":
+            opts["holdridge_rule"] = holdridge_rule
+            if ff_flat is not None:
+                v = ff_flat[i]
+                opts["frost_free"] = None if (v is None or (isinstance(v, float) and np.isnan(v))) else bool(v)
+        key = classify_cell(typ_classification, flat[:, i], **opts)
         class_flat[i] = label_dict.get(key, max(label_dict.values()))
         if progress and (i % max(1, n // 20) == 0):
             print(f"  {100 * i // n:3d}%", end="\r")

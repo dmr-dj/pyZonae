@@ -40,6 +40,8 @@ class ClimateFields:
     lats: xr.DataArray
     lons: xr.DataArray
     landmask: Optional[xr.DataArray] = None  # (lat, lon) boolean, True over land
+    orog: Optional[xr.DataArray] = None      # (lat, lon) surface elevation, m
+    frost_free: Optional[xr.DataArray] = None  # (lat, lon) True where frost-free
 
 
 def _guess_name(ds, candidates):
@@ -69,6 +71,10 @@ def load_climatology(
     pr_var=None,
     sftlf_file=None,
     sftlf_var=None,
+    orog_file=None,
+    orog_var=None,
+    frost_line=None,
+    frost_threshold=0.0,
     land_threshold=0.5,
     tas_units="auto",
     pr_units="mm/month",
@@ -168,4 +174,53 @@ def load_climatology(
         tas = tas.where(landmask)
         pr = pr.where(landmask)
 
-    return ClimateFields(tas=tas, pr=pr, lats=lats, lons=lons, landmask=landmask)
+    # --- Orography (required by Holdridge, ignored by the other schemes) ---
+    orog = None
+    if orog_file is not None:
+        ds_o = xr.open_dataset(orog_file, decode_times=decode_times)
+        ovar = orog_var or _guess_name(ds_o, ["orog", "elevation", "elev", "z", "topo", "hgt"])
+        orog = ds_o[ovar].assign_coords({lat_name: lats, lon_name: lons})
+        if landmask is not None:
+            orog = orog.where(landmask)
+
+    # --- Frost line -------------------------------------------------------
+    # Only ever used to split WarmTemperate from Subtropical. Four strategies:
+    #
+    #   None                  -> unknown. The two regions are reported merged
+    #                            rather than inventing a boundary.
+    #   "coldest_month"       -> frost-free where the coldest monthly mean tas
+    #                            exceeds `frost_threshold` (degC). Crude, but
+    #                            computable from a monthly climatology.
+    #   "tasmin_threshold"    -> same, but applied to a monthly tasmin field,
+    #                            which must be supplied as `frost_line=<DataArray>`
+    #                            of monthly minima (closer to the daily criterion).
+    #   <DataArray> or <path> -> a ready-made boolean mask, True = frost-free.
+    #                            This is the hook for a properly calibrated frost
+    #                            line derived from daily data (Lugo et al. use
+    #                            "fewer than 0.5 frost days per year", where a
+    #                            frost day has daily Tmin < 0 degC).
+    frost_free = None
+    if isinstance(frost_line, str) and frost_line == "coldest_month":
+        frost_free = tas.min(dim="time") > frost_threshold
+    elif isinstance(frost_line, str) and frost_line == "tasmin_threshold":
+        raise ValueError(
+            "frost_line='tasmin_threshold' requires the monthly tasmin field; "
+            "pass it directly as frost_line=<DataArray of monthly minima>."
+        )
+    elif isinstance(frost_line, str):
+        # treat as a path to a NetCDF holding a boolean/0-1 frost-free mask
+        ds_f = xr.open_dataset(frost_line, decode_times=decode_times)
+        fvar = _guess_name(ds_f, ["frost_free", "frostfree", "nofrost", "mask"])
+        frost_free = ds_f[fvar].assign_coords({lat_name: lats, lon_name: lons}) > 0.5
+    elif frost_line is not None:
+        fl = frost_line
+        if "time" in getattr(fl, "dims", ()):      # monthly minima supplied
+            fl = fl.min(dim="time") > frost_threshold
+        frost_free = fl.assign_coords({lat_name: lats, lon_name: lons})
+        if frost_free.dtype != bool:
+            frost_free = frost_free > 0.5
+    if frost_free is not None and landmask is not None:
+        frost_free = frost_free.where(landmask)
+
+    return ClimateFields(tas=tas, pr=pr, lats=lats, lons=lons, landmask=landmask,
+                         orog=orog, frost_free=frost_free)

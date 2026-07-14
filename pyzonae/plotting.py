@@ -21,6 +21,7 @@ back to a plain matplotlib axes so the package still runs headless.
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
 try:
     import cartopy.crs as ccrs
@@ -30,7 +31,8 @@ except Exception:      # pragma: no cover - cartopy optional
 
 
 def plot_classification(class_map, lons, lats, label_dict, cmap,
-                        title="", figsize=(12, 7), coastlines=True):
+                        title="", figsize=(12, 7), coastlines=True,
+                        only_used=True, max_legend=60):
     """Draw a categorical classification map.
 
     Parameters
@@ -42,13 +44,42 @@ def plot_classification(class_map, lons, lats, label_dict, cmap,
         Key -> integer index, as returned by :mod:`pyzonae.cmaps`.
     cmap : matplotlib colormap
     title : str
+    only_used : bool
+        Show only the classes actually present in ``class_map``. This matters a
+        great deal for schemes with a large vocabulary: Holdridge defines a few
+        hundred (region, belt, province) combinations but a typical world map
+        occupies only a few dozen, so labelling all of them makes the colorbar
+        unreadable. Set False to show the full vocabulary.
+    max_legend : int
+        Above this many classes the tick labels are dropped entirely (the
+        colorbar becomes a plain gradient), since they would be illegible.
     """
+    full_values = sorted(label_dict.values())   # ordering of the FULL colormap
+
+    # Restrict the vocabulary to what is actually on the map. Schemes like
+    # Holdridge define hundreds of classes but occupy only a few dozen; labelling
+    # the unused ones makes the colorbar unreadable and misleads the reader into
+    # thinking those zones exist in the data.
+    if only_used:
+        present = set(int(v) for v in np.ma.compressed(class_map))
+        used = {k: v for k, v in label_dict.items() if v in present}
+        if used:                       # guard: never end up with an empty legend
+            label_dict = used
+
     # Map each label's integer value to a contiguous color slot 0..N-1, so an
     # out-of-range sentinel value (e.g. Defaut's 10000) cannot stretch the color
     # scale. We remap the class_map through this ordering before plotting.
     ordered_values = sorted(label_dict.values())
     value_to_slot = {v: i for i, v in enumerate(ordered_values)}
     n_slots = len(ordered_values)
+
+    # The original colormap is indexed by position in the FULL vocabulary, so
+    # after filtering we must pull out the colours of the retained classes in
+    # their new order -- otherwise every class would be redrawn in the wrong hue.
+    if only_used and full_values is not None and n_slots < len(full_values):
+        full_slot = {v: i for i, v in enumerate(full_values)}
+        picked = [cmap(full_slot[v]) for v in ordered_values]
+        cmap = mcolors.ListedColormap(picked)
 
     remapped = np.ma.masked_all(class_map.shape, dtype=float)
     for v, slot in value_to_slot.items():
@@ -78,8 +109,17 @@ def plot_classification(class_map, lons, lats, label_dict, cmap,
     ordered_keys = [slot_to_key[i] for i in tick_positions]
 
     cbar = plt.colorbar(mesh, orientation="horizontal", shrink=0.9, pad=0.05)
-    cbar.set_ticks(tick_positions)
-    cbar.set_ticklabels(ordered_keys, fontsize=6, weight="bold")
+    if n_slots <= max_legend:
+        cbar.set_ticks(tick_positions)
+        # Shrink the font as the vocabulary grows, so labels stay legible.
+        fs = 7 if n_slots <= 20 else (6 if n_slots <= 40 else 5)
+        cbar.set_ticklabels(ordered_keys, fontsize=fs, weight="bold")
+    else:
+        # Too many classes to label individually; a gradient bar is more honest
+        # than an unreadable wall of text.
+        cbar.set_ticks([])
+        cbar.set_label(f"{n_slots} classes (too many to label; "
+                       f"see the returned label dict)", fontsize=8)
     for lab in cbar.ax.get_xticklabels():
         lab.set_rotation(90)
     if title:

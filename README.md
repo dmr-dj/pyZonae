@@ -16,6 +16,7 @@ merge of two codebases:
   in the Kottek (2006), Peel (2007), Cannon (2012) and Trewartha/Belda (2014)
   variants.
 * **Defaut (1996)** bioclimatic stages (notebook by G. Bonneroy, 2026).
+* **Holdridge (1967)** Life's zones (implementation by D.M. Roche and C. Opus, 2026).
 
 The two schemes now share one pipeline. You pick the rule with a single option,
 `typ_classification`, whose accepted values are:
@@ -27,6 +28,7 @@ The two schemes now share one pipeline. You pick the rule with a single option,
 | `cannon`     | Köppen-Geiger, Cannon 2012               |
 | `trewartha`  | Trewartha, Belda et al. 2014             |
 | **`Defaut96`** | **Defaut (1996) bioclimatic stages**   |
+| **`Holdridge`** | **Holdridge life zones (Lugo et al. 1999)** |
 
 ## Install
 
@@ -219,6 +221,127 @@ The Defaut scheme implements the method described in Defaut, B. (1996),
 *La biogéographie des Orthoptères et la classification bioclimatique*,
 Matériaux Entomocénotiques (cited for scientific attribution; the code is an
 original Apache-2.0 implementation).
+
+## Holdridge life zones
+
+`Holdridge` implements the life-zone system as operationalised by Lugo et al.
+(1999). Despite their names, Holdridge's *latitudinal regions* (polar ...
+tropical) are **not geographic**: they are labels for intervals of sea-level
+biotemperature. The classification depends only on climate plus elevation.
+
+It needs one extra input, surface elevation (`--orog`), which the other schemes
+do not use. Without it, pyZonae raises a clear error rather than guessing.
+
+```bash
+python scripts/classify_map.py --classification Holdridge \
+    --tas test-data/synthetic_tas_monClim.nc \
+    --pr  test-data/synthetic_pr_monClim.nc \
+    --sftlf test-data/synthetic_sftlf.nc \
+    --orog  test-data/synthetic_orog.nc --save map_holdridge.png
+```
+
+### Two rule sets: `--holdridge-rule`
+
+* `fuzzy` (default) — Lugo et al.'s adjusted thresholds. They exist because,
+  under the strict rule, a trivial elevation difference can flip a cell into a
+  different altitudinal belt (their example: 17 m of relief is enough).
+* `strict` — Holdridge's original thresholds, artefacts included. Useful for
+  reproducing the original system and for measuring what the fuzzy rule changes.
+
+### The frost line: `--frost-line`
+
+The frost line splits *warm temperate* from *subtropical*, and **only** that.
+Lugo et al. derive it from **daily** minima ("fewer than 0.5 frost days per
+year", a frost day being one with daily Tmin < 0 °C) — data a monthly
+climatology does not have. pyZonae therefore makes it pluggable:
+
+| value | behaviour |
+|---|---|
+| *(omitted, default)* | the two regions are reported **merged**, as `WarmTemperate/Subtropical`. No boundary is invented, and the merge is explicit in the legend. |
+| `coldest_month` | frost-free where the coldest monthly mean `tas` exceeds `--frost-threshold` (°C). Crude, but computable from monthly data. |
+| *path to a NetCDF* | a ready-made frost-free mask. **This is the hook for a properly calibrated frost line derived from daily data.** |
+
+Everything else in the system (biotemperature, precipitation, PET ratio,
+altitudinal belts) is computable from a monthly climatology, so the default mode
+is fully usable — it simply declines to draw one boundary it cannot justify.
+
+### Known limitation
+
+Holdridge ignores climatic **seasonality** at the life-zone level. Two regions
+with the same annual biotemperature and precipitation classify identically even
+if one has a wet winter and a dry summer. This is structural to the system (Lugo
+et al. call it the third and only valid criticism), not an implementation
+choice — unlike Köppen and Defaut, which are seasonality-aware.
+
+
+## Decision-space diagrams
+
+Besides the map, `Defaut96` and `Holdridge` can be drawn in the space of their
+own classifying variables. A map shows *where* each class lands; the diagram
+shows *why*: every grid cell sits at its coordinates in the classifying
+variables, and the decision boundaries are drawn on top — generated directly from
+the classifier's functions, so they cannot drift out of step with the code.
+
+```bash
+# Defaut in (Qn2, temperature)
+python scripts/classify_map.py --classification Defaut96 \
+    --tas t.nc --pr p.nc --sftlf m.nc --diagram --save defaut_space.png
+
+# Holdridge in his triangular diagram, with the hexagonal cells underlaid
+python scripts/classify_map.py --classification Holdridge \
+    --tas t.nc --pr p.nc --sftlf m.nc --orog o.nc \
+    --diagram --hexagons --save holdridge_triangle.png
+```
+
+Or from Python:
+
+```python
+from pyzonae import run_classification, load_climatology, build_arguments, plot_diagram
+
+m, labels, cmap, lons, lats = run_classification("Holdridge", tas, pr,
+                                                 sftlf_file=msk, orog_file=oro)
+fields = load_climatology(tas, pr, sftlf_file=msk, orog_file=oro)
+args, _, _, _ = build_arguments(fields)
+fig, ax = plot_diagram("Holdridge", m, args, labels, cmap, hexagons=True)
+```
+
+### Why the two diagrams have different geometries
+
+This is forced by the mathematics of each scheme, not by taste.
+
+**Holdridge** has an exact constraint, `PETR = Tbio × 58.93 / P`, which is linear
+in logarithms: `log(PETR) + log(P) − log(Tbio) = log(58.93)`. The three axes
+therefore lie on a *plane* — two degrees of freedom — so the classification
+projects into 2-D without loss. That plane, cut by the axis ranges, is his
+triangle. Under the projection used here the three families of lines meet at
+60°, which is what tiles the plane with the regular hexagons of his Fig. 1.
+Cold sits at the apex and tropical along the base, as he draws it.
+
+**Defaut** has no such constraint. Its aridity index `Qn2` depends on
+precipitation terms that are independent of the other two axes: regressing Qn2 on
+temperature and continentality explains only ~9 % of its variance. The three axes
+have three genuine degrees of freedom, so a triangular projection would *invent*
+a constraint that does not exist and would overlay distinct classes. Defaut is
+therefore plotted as a scatter in (Qn2, temperature).
+
+Two further points of fidelity in the Defaut diagram:
+
+* Its decision tree **changes variable** partway down — degrees 1–4 test the
+  annual mean temperature, degrees 5–7 the warmest month — so the figure is split
+  into two stacked panels, each drawn against the variable it actually uses.
+* A boundary is drawn **only where it is live**. The `E|HA` curve, for instance,
+  ceases to exist below ~10 °C because the eremic stage is not realised there.
+  Rather than hard-coding a temperature window per curve, the module *probes the
+  decision tree*: at each point it asks the real classifier which group lies on
+  either side, and keeps the point only if the expected pair appears.
+
+The third axis — continentality for Defaut, altitudinal belt for Holdridge — is
+carried by **marker shape** in both cases, since it appears on neither axis.
+Bands are drawn most-numerous first so the rare ones are not buried.
+
+The Köppen-Geiger variants have **no** decision-space diagram: they classify on
+many interacting criteria, with no faithful low-dimensional picture. Asking for
+one raises an explanatory error rather than producing a misleading figure.
 
 ## Gaussen driest-3-months (a note on temperature units)
 

@@ -29,6 +29,7 @@ of ``typ_classification``) to the function that provides its colors/labels.
 """
 
 import matplotlib as mpl
+import numpy as np
 
 
 # --------------------------------------------------------------------------
@@ -510,6 +511,62 @@ def Defaut_cmap_1996():
 
 
 # --------------------------------------------------------------------------
+# Holdridge life zones
+# --------------------------------------------------------------------------
+def Holdridge_cmap():
+    """Labels and colours for the Holdridge life zones.
+
+    There are several hundred possible (region, belt, province) combinations, so
+    the colormap is generated rather than hand-tabulated. The encoding is chosen
+    for readability:
+
+    * **hue**       <- humidity province (blue = humid ... red/brown = arid)
+    * **lightness** <- latitudinal region (light = cold ... dark = warm)
+    * **saturation**<- altitudinal belt (muted at high belts)
+
+    Returns ``(label_dict, colormap)`` like every other ``*_cmap*`` here.
+    """
+    import colorsys
+
+    from .classifiers.holdridge import (
+        LATITUDINAL_REGIONS, ALTITUDINAL_BELTS, HUMIDITY_PROVINCES,
+        SUBTROPICAL, WARM_TEMPERATE_MERGED,
+    )
+
+    # Regions in thermal order, including both frost-resolved variants and the
+    # merged class used when no frost line is supplied.
+    regions = ["Polar", "Subpolar", "Boreal", "CoolTemperate",
+               "WarmTemperate", SUBTROPICAL, WARM_TEMPERATE_MERGED, "Tropical"]
+
+    # Hue per humidity province: humid (blue ~0.58) -> arid (red ~0.02)
+    n_p = len(HUMIDITY_PROVINCES)
+    hues = np.linspace(0.58, 0.02, n_p)
+
+    labels = {}
+    colors = []
+    idx = 1
+    for r_i, region in enumerate(regions):
+        # light for cold regions, dark for warm ones
+        light = 0.80 - 0.42 * (r_i / max(1, len(regions) - 1))
+        for b_i, belt in enumerate(ALTITUDINAL_BELTS):
+            sat_scale = 1.0 - 0.45 * (b_i / max(1, len(ALTITUDINAL_BELTS) - 1))
+            for p_i, prov in enumerate(HUMIDITY_PROVINCES):
+                h = hues[p_i]
+                s = 0.75 * sat_scale
+                v_l = light
+                r, g, b = colorsys.hls_to_rgb(h, v_l, s)
+                labels[f"{region} {belt} {prov}"] = idx
+                colors.append(mpl.colors.to_hex((r, g, b)))
+                idx += 1
+
+    # Sentinel for cells the model cannot classify (e.g. missing inputs).
+    labels["Outside Holdridge model"] = 10000
+    colors.append("#000000")
+
+    return labels, mpl.colors.ListedColormap(colors)
+
+
+# --------------------------------------------------------------------------
 # Registry: classification name -> colormap/label provider
 # --------------------------------------------------------------------------
 CMAP_REGISTRY = {
@@ -518,6 +575,7 @@ CMAP_REGISTRY = {
     "cannon":    KG_cmap_2012,
     "trewartha": KG_cmap_2014,
     "Defaut96":  Defaut_cmap_1996,
+    "Holdridge": Holdridge_cmap,
 }
 
 
