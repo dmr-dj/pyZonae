@@ -189,8 +189,17 @@ def plot_holdridge_triangle(class_map, fields_args, label_dict, cmap,
 
     colours = np.array([cmap(slot.get(int(c), 0)) for c in cls])
     keys = [inv.get(int(c), "") for c in cls]
-    belts = np.array([k.split()[1] if k and not k.startswith("Outside") else ""
-                      for k in keys])
+    # The belt is read out of the key, but in a *cross* diagram the colouring
+    # comes from another classification entirely, whose keys have a different
+    # shape ("SH3c", "Cfb"). Fall back to no belt rather than crashing: the
+    # marker axis simply carries no information in that case.
+    def _belt(k):
+        if not k or k.startswith("Outside"):
+            return ""
+        parts = k.split()
+        return parts[1] if len(parts) >= 3 else ""
+
+    belts = np.array([_belt(k) for k in keys])
 
     fig, ax = plt.subplots(figsize=figsize)
     if hexagons:
@@ -199,7 +208,7 @@ def plot_holdridge_triangle(class_map, fields_args, label_dict, cmap,
 
     x, y = project(tbio, p_ann)
 
-    if markers:
+    if markers and (belts != "").any():
         # Most-numerous first, so rare belts land on top rather than underneath.
         order = sorted(BELT_MARKERS, key=lambda b: -(belts == b).sum())
         for b in order:
@@ -219,6 +228,8 @@ def plot_holdridge_triangle(class_map, fields_args, label_dict, cmap,
         ax.legend(handles=handles, loc="upper left", fontsize=7, frameon=True,
                   framealpha=0.9, title="Altitudinal belt", title_fontsize=7.5)
     else:
+        # No belts to show: either markers were switched off, or the colours come
+        # from a classification that has no altitudinal axis (a cross diagram).
         ax.scatter(x[live], y[live], s=point_size, c=colours[live],
                    linewidths=0, alpha=alpha, zorder=2)
 

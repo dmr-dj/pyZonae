@@ -83,3 +83,76 @@ def plot_diagram(typ_classification, class_map, fields_args, label_dict, cmap,
         f"Available: {DIAGRAMS}. The Koeppen-Geiger variants classify on many "
         f"interacting criteria and have no faithful low-dimensional picture."
     )
+
+
+def plot_cross_diagram(space, colour_by, class_maps, label_dicts, cmaps,
+                       fields_args, legend_max=30, **kwargs):
+    """Draw one classification's *space* coloured by another's *classes*.
+
+    This is a comparison of taxonomies: the axes and decision boundaries come
+    from ``space``, while the colour of each cell comes from ``colour_by``. It
+    answers "where do Köppen's classes fall in Defaut's decision space, and where
+    do the two schemes disagree?".
+
+    It works because the two are already decoupled: the diagram takes its
+    geometry from the shared derived-index stack, and its colours from whichever
+    class map it is handed. Nothing special is needed beyond labelling the figure
+    honestly, which is what this wrapper adds.
+
+    Parameters
+    ----------
+    space : str
+        Classification whose decision space is drawn (one of :data:`DIAGRAMS`).
+    colour_by : str
+        Classification whose classes colour the points. May be any classification,
+        including ``space`` itself (which reproduces the ordinary diagram).
+    class_maps, label_dicts, cmaps : dict
+        Keyed by classification name; must contain at least ``colour_by``.
+    fields_args : the derived-index stack.
+    legend_max : int
+        Above this many classes, the colour legend is dropped as unreadable.
+
+    Returns
+    -------
+    fig, ax
+    """
+    import numpy as np
+    from matplotlib.lines import Line2D
+
+    if space not in DIAGRAMS:
+        raise ValueError(f"'{space}' has no decision space. Available: {DIAGRAMS}")
+    if colour_by not in class_maps:
+        raise KeyError(f"no class map supplied for '{colour_by}'")
+
+    cmap_used = class_maps[colour_by]
+    labels_used = label_dicts[colour_by]
+    colours_used = cmaps[colour_by]
+
+    title = kwargs.pop(
+        "title",
+        f"{colour_by} classes in {space}'s decision space"
+        if colour_by != space else f"{space} decision space",
+    )
+    fig, ax = plot_diagram(space, cmap_used, fields_args, labels_used,
+                           colours_used, title=title, **kwargs)
+
+    # A cross diagram is unreadable without saying which colours mean what.
+    present = sorted(set(int(v) for v in np.ma.compressed(cmap_used)))
+    inv = {v: k for k, v in labels_used.items()}
+    values = sorted(labels_used.values())
+    slot = {v: i for i, v in enumerate(values)}
+    if len(present) <= legend_max:
+        handles = [
+            Line2D([], [], linestyle="none", marker="o", markersize=5,
+                   markerfacecolor=colours_used(slot[v]),
+                   markeredgecolor="none", label=inv.get(v, str(v)))
+            for v in present
+        ]
+        axes = fig.axes
+        target = axes[0] if len(axes) == 1 else axes[min(1, len(axes) - 1)]
+        target.legend(handles=handles, loc="center left",
+                      bbox_to_anchor=(1.01, 0.5), fontsize=6.5, frameon=False,
+                      ncol=1 if len(handles) <= 16 else 2,
+                      title=f"{colour_by} class", title_fontsize=7.5)
+        fig.subplots_adjust(right=0.82)
+    return fig, ax
