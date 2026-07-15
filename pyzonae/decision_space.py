@@ -290,15 +290,24 @@ def plot_defaut_space(class_map, fields_args, label_dict, cmap,
     if markers and not facet:
         # The shapes mean nothing without a key. Colour still encodes the class,
         # so this legend is deliberately colourless: it explains shape only.
+        #
+        # It goes in the figure margin rather than inside an axes: the panels are
+        # a dense scatter, and an in-axes legend would sit on top of real data.
         from matplotlib.lines import Line2D
         handles = [
             Line2D([], [], linestyle="none", marker=mk, markersize=6,
                    markerfacecolor="0.75", markeredgecolor="0.25", label=lab)
             for lab, _, _, mk, _, _ in reversed(CONT_MARKERS)
         ]
-        axes[1, 0].legend(handles=handles, loc="lower right", fontsize=7,
-                          frameon=True, framealpha=0.9,
-                          title="Continentality (tc − tf)", title_fontsize=7.5)
+        fig.legend(handles=handles, loc="lower center", ncol=len(handles),
+                   fontsize=7.5, frameon=False,
+                   title="Continentality  (tc − tf)", title_fontsize=8,
+                   bbox_to_anchor=(0.5, 0.005))
+        # Reserve the strip we just wrote into, without disturbing the zero gap
+        # between the two stacked panels. The legend must stay inside the figure
+        # bounds: relying on bbox_inches="tight" to rescue an overhanging legend
+        # works, but silently clips it for anyone who saves without that option.
+        fig.subplots_adjust(bottom=0.15)
 
     fig.suptitle(title, fontsize=12, weight="bold")
     return fig, axes
