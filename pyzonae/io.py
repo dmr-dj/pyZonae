@@ -51,15 +51,43 @@ def _guess_name(ds, candidates):
     raise KeyError(f"None of {candidates} found in dataset (have: {list(ds.variables)})")
 
 
+def _guess_time_dim(da):
+    """Name of the time dimension of a (time, lat, lon) DataArray.
+
+    Climate files disagree on this name: 'time', 't', 'month', 'time_counter'
+    (NEMO/IPSL), 'Time' (WRF), and so on. We look, in order, for a coordinate
+    flagged as time by its metadata, then a common name, then fall back to the
+    leading dimension -- which for these monthly climatologies is the time axis.
+    """
+    # 1) a coordinate whose CF metadata marks it as time
+    for name in da.dims:
+        coord = da.coords.get(name)
+        if coord is None:
+            continue
+        attrs = {k.lower(): str(v).lower() for k, v in coord.attrs.items()}
+        if attrs.get("axis") == "t" or attrs.get("standard_name") == "time":
+            return name
+        units = attrs.get("units", "")
+        if " since " in units:            # "days since 1850-01-01" etc.
+            return name
+    # 2) a common name
+    for name in ("time", "t", "month", "months", "time_counter", "Time", "TIME"):
+        if name in da.dims:
+            return name
+    # 3) fall back to the leading dimension
+    return da.dims[0]
+
+
 def _scale_by_month(pr, per_month_factor):
     """Multiply a (time, lat, lon) DataArray by a length-12 per-month factor.
 
     The factor is applied along the leading time axis. Falls back gracefully if
     the number of time steps is not 12 (multiplies by the mean factor).
     """
-    nt = pr.sizes.get("time", pr.shape[0])
+    tdim = _guess_time_dim(pr)
+    nt = pr.sizes.get(tdim, pr.shape[0])
     if nt == len(per_month_factor):
-        factor = xr.DataArray(per_month_factor, dims="time")
+        factor = xr.DataArray(per_month_factor, dims=tdim)
         return pr * factor
     return pr * float(np.mean(per_month_factor))
 
@@ -201,7 +229,7 @@ def load_climatology(
     #                            frost day has daily Tmin < 0 degC).
     frost_free = None
     if isinstance(frost_line, str) and frost_line == "coldest_month":
-        frost_free = tas.min(dim="time") > frost_threshold
+        frost_free = tas.min(dim=_guess_time_dim(tas)) > frost_threshold
     elif isinstance(frost_line, str) and frost_line == "tasmin_threshold":
         raise ValueError(
             "frost_line='tasmin_threshold' requires the monthly tasmin field; "
@@ -214,8 +242,11 @@ def load_climatology(
         frost_free = ds_f[fvar].assign_coords({lat_name: lats, lon_name: lons}) > 0.5
     elif frost_line is not None:
         fl = frost_line
-        if "time" in getattr(fl, "dims", ()):      # monthly minima supplied
-            fl = fl.min(dim="time") > frost_threshold
+        # A supplied frost field is either a ready 2-D (lat, lon) mask, or a
+        # 3-D stack of monthly minima to be reduced. Distinguish by rank, not by
+        # a dimension name -- the time axis may be called anything.
+        if getattr(fl, "ndim", 2) >= 3:
+            fl = fl.min(dim=_guess_time_dim(fl)) > frost_threshold
         frost_free = fl.assign_coords({lat_name: lats, lon_name: lons})
         if frost_free.dtype != bool:
             frost_free = frost_free > 0.5

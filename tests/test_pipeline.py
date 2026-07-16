@@ -574,3 +574,40 @@ def test_thornfeddema_key_format(data_dir):
     for v in set(int(x) for x in m.compressed()):
         parts = inv[v].split()
         assert len(parts) == 2 and parts[0] in moist and parts[1] in therm
+
+
+def test_time_axis_name_is_autodetected(tmp_path):
+    """The time axis need not be called 'time'.
+
+    Climate files use 't', 'month', 'time_counter' (NEMO/IPSL), etc. The loader
+    detects the time dimension by metadata, common name, or as the leading axis,
+    so a renamed axis must classify exactly like the original.
+    """
+    import xarray as xr
+    from scripts.make_synthetic_data import build
+    from pyzonae import run_classification
+
+    ds_t, ds_p, ds_m, _ = build(nlat=24, nlon=48, seed=1)
+
+    # Reference run with the standard 'time' axis.
+    d0 = tmp_path / "std"
+    d0.mkdir()
+    ds_t.to_netcdf(d0 / "tas.nc")
+    ds_p.to_netcdf(d0 / "pr.nc")
+    ds_m.to_netcdf(d0 / "sftlf.nc")
+    m_ref, _, _, _, _ = run_classification(
+        "ThornFeddema05", str(d0 / "tas.nc"), str(d0 / "pr.nc"),
+        sftlf_file=str(d0 / "sftlf.nc"))
+
+    # Same data, time axis renamed to 'month'.
+    d1 = tmp_path / "renamed"
+    d1.mkdir()
+    ds_t.rename({"time": "month"}).to_netcdf(d1 / "tas.nc")
+    ds_p.rename({"time": "month"}).to_netcdf(d1 / "pr.nc")
+    ds_m.to_netcdf(d1 / "sftlf.nc")
+    m_ren, _, _, _, _ = run_classification(
+        "ThornFeddema05", str(d1 / "tas.nc"), str(d1 / "pr.nc"),
+        sftlf_file=str(d1 / "sftlf.nc"))
+
+    assert np.array_equal(m_ref.filled(-1), m_ren.filled(-1)), \
+        "renaming the time axis changed the classification"

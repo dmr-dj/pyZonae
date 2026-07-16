@@ -1,3 +1,4 @@
+<a name="readme-top"></a>
 <!-- README shields loosely based on: https://github.com/othneildrew/Best-README-Template -->
 
 <!-- PROJECT SHIELDS -->
@@ -16,7 +17,6 @@ merge of two codebases:
   in the Kottek (2006), Peel (2007), Cannon (2012) and Trewartha/Belda (2014)
   variants.
 * **Defaut (1996)** bioclimatic stages (notebook by G. Bonneroy, 2026).
-* **Holdridge (1967)** Life's zones (implementation by D.M. Roche and C. Opus, 2026).
 
 The two schemes now share one pipeline. You pick the rule with a single option,
 `typ_classification`, whose accepted values are:
@@ -29,6 +29,7 @@ The two schemes now share one pipeline. You pick the rule with a single option,
 | `trewartha`  | Trewartha, Belda et al. 2014             |
 | **`Defaut96`** | **Defaut (1996) bioclimatic stages**   |
 | **`Holdridge`** | **Holdridge life zones (Lugo et al. 1999)** |
+| **`ThornFeddema05`** | **Thornthwaite-Feddema (2005), water-balance; palaeo-ready** |
 
 ## Install
 
@@ -140,6 +141,23 @@ python scripts/classify_map.py --classification Defaut96 \
 
 ## Library use
 
+### Input files
+
+Inputs are monthly climatologies of temperature and precipitation on a common
+lat/lon grid (12 time steps). pyZonae detects the relevant names for you:
+
+* **Variables** — `tas`/`t2m`/`temp`... for temperature, `pr`/`precip`/`tp`... for
+  precipitation. Override with `tas_var=` / `pr_var=` if yours is unusual.
+* **Coordinates** — `lat`/`latitude`/`y` and `lon`/`longitude`/`x`.
+* **Time axis** — detected by CF metadata (`axis: T`, a `... since ...` unit),
+  then by common names (`time`, `t`, `month`, `time_counter`, ...), and failing
+  those, taken as the leading dimension. So the time axis need not be called
+  `time`; a file whose axis is `month` or `time_counter` works unchanged.
+
+Units are read from each variable's `units` attribute where present (e.g. Kelvin
+vs Celsius, `mm month-1` vs `kg m-2 s-1`); pass `--tas-units` / `--pr-units` to
+override.
+
 (Assumes you have run `make_synthetic_data.py` first, or substitute your own
 NetCDF paths.)
 
@@ -162,18 +180,25 @@ fig, ax = plot_classification(class_map, lons, lats, labels, cmap)
 pyzonae/
 ├── io.py                   # xarray loading (replaces lcm_utils/netCDF4);
 │                           #   units, land mask, orography, frost line
-├── derive.py               # the 17 derived indices, shared by every scheme
-│                           #   (Koeppen 0-12, Defaut 13-14, Holdridge 15-16)
+├── derive.py               # the 19 derived indices, shared by every scheme
+│                           #   (Koeppen 0-12, Defaut 13-14, Holdridge 15-16,
+│                           #    ThornFeddema 17-18)
 ├── classify.py             # dispatch: name -> classifier
 ├── cmaps.py                # colours + label dicts, one registry
 ├── run.py                  # load -> derive -> classify -> map
 ├── cli.py                  # argparse CLI (installed as `pyzonae-classify`)
 │
+├── orbital.py              # Milankovitch parameters + calendar day length;
+│                           #   the palaeo hook for ThornFeddema's PE
+├── thornthwaite.py         # Thornthwaite PE (Willmott high-T correction) and
+│                           #   the Willmott-Feddema moisture index
+│
 ├── classifiers/            # the rules themselves — one module per scheme
 │   ├── koeppen.py          #   KG/Trewartha logic (verbatim, NumPy-2 compatible)
 │   ├── defaut.py           #   Defaut tree; Qn2 and its polynomial boundaries
-│   └── holdridge.py        #   biotemperature, PET ratio, latitudinal regions,
-│                           #     altitudinal belts; fuzzy vs strict thresholds
+│   ├── holdridge.py        #   biotemperature, PET ratio, latitudinal regions,
+│   │                       #     altitudinal belts; fuzzy vs strict thresholds
+│   └── thornfeddema.py     #   Feddema 2005 moisture x thermal (two factors)
 │
 ├── plotting.py             # shared categorical map (cartopy optional);
 │                           #   only labels the classes actually present
@@ -224,6 +249,15 @@ Holdridge showed what the two extra cases look like:
   error if `Holdridge` is requested without `--orog`, while the other schemes
   keep working without it. A scheme may add an input without imposing it on
   everyone.
+
+Thornthwaite-Feddema added a third pattern:
+
+* **It needed a new derived quantity with an optional control** — potential
+  evapotranspiration, which depends on day length and hence on the orbit. The
+  orbit is exposed as an optional `OrbitalParameters` threaded through
+  `run_classification` and `build_arguments`; absent, it defaults to present-day,
+  so nothing changes for the other schemes. This is the same "optional hook with
+  a sensible default" pattern as Holdridge's frost line.
 
 If a scheme also has a low-dimensional decision space, add a plotter and register
 it in `diagrams.py`. Not every scheme does — see above.
@@ -382,6 +416,68 @@ Bands are drawn most-numerous first so the rare ones are not buried.
 The Köppen-Geiger variants have **no** decision-space diagram: they classify on
 many interacting criteria, with no faithful low-dimensional picture. Asking for
 one raises an explanatory error rather than producing a misleading figure.
+
+## Thornthwaite-Feddema (2005)
+
+`ThornFeddema05` is the *revised* Thornthwaite-type classification of Feddema
+(2005) — not the 1948 original. Unlike the other schemes, it is built entirely on
+potential evapotranspiration (PE) and a moisture balance, which makes it a
+genuine water-availability classification rather than one of temperature and
+precipitation thresholds.
+
+This first version implements Feddema's two primary factors (his Tables 5-6):
+
+* **Moisture** — the Willmott-Feddema index `Im = 1 − PE/P` (wet) or `P/PE − 1`
+  (dry), bounded in [−1, 1], split into six classes (Arid … Saturated).
+* **Thermal** — the annual PE, in six equal 300 mm classes (Frost … Torrid).
+
+Class keys are `"<Moisture> <Thermal>"`, e.g. `"Moist Warm"`. The two seasonality
+factors (Tables 7-8) are planned for a later version.
+
+```bash
+python scripts/classify_map.py --classification ThornFeddema05 \
+    --tas t.nc --pr p.nc --sftlf m.nc --save tf.png
+```
+
+### Palaeo-ready: orbital parameters
+
+PE uses the Thornthwaite (1948) temperature formula with the Willmott et al.
+(1985) high-temperature correction. That formula needs day length, which depends
+on latitude and on the Earth's orbit. For palaeoclimate work the three
+Milankovitch parameters are exposed and can be set:
+
+```python
+from pyzonae import run_classification, OrbitalParameters
+
+# Fill these from your own orbital solution (Berger 1978, Laskar 2004, ...).
+orb = OrbitalParameters(obliquity=22.95, eccentricity=0.0189,
+                        perihelion_longitude=114.0)
+m, labels, cmap, lons, lats = run_classification(
+    "ThornFeddema05", tas, pr, sftlf_file=msk, orbital=orb)
+```
+
+or on the command line:
+
+```bash
+python scripts/classify_map.py --classification ThornFeddema05 \
+    --tas t.nc --pr p.nc --sftlf m.nc \
+    --obliquity 22.95 --eccentricity 0.0189 --perihelion-longitude 114
+```
+
+Left untouched, the parameters default to present-day and the result is the
+ordinary modern calculation. pyZonae does **not** derive the parameters from a
+date — that is left to the established orbital tools you already use. Day length
+is evaluated per fixed-length calendar month (see `orbital.py`); mixing that with
+a "celestial" fixed-solar-longitude calendar would bias high-latitude PE, so the
+convention matters and is documented there.
+
+### Known limitation
+
+Thornthwaite PE underestimates evaporative demand at high latitudes, where long
+dormant seasons contribute little to annual PE. The moisture index is then
+inflated, and a large share of high-latitude land classifies as `Saturated`.
+This is a property of the method — Feddema notes it in the paper — not an
+implementation artifact.
 
 ## Gaussen driest-3-months (a note on temperature units)
 
