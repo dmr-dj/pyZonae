@@ -34,6 +34,8 @@ variables the Defaut scheme needs:
    14: P_sec3   driest 3 consecutive months (Gaussen, mm)
    15: Tbio     Holdridge biotemperature           (degC)
    16: T0bio    Holdridge sea-level biotemperature (degC)
+   17: PE_ann   Thornthwaite annual PE             (mm/yr)  [Feddema thermal factor]
+   18: Im       Willmott-Feddema moisture index    (-1..1)  [Feddema moisture factor]
 
 Summer/winter half-years follow pyKoeppen: Apr-Sep is "summer" in the northern
 hemisphere and is swapped with the winter slice south of the equator.
@@ -42,7 +44,7 @@ hemisphere and is swapped with the winter slice south of the equator.
 import numpy as np
 from numpy import ma
 
-N_ARGS = 17
+N_ARGS = 19
 
 
 def _maxminsum_slice(mon, lo, hi):
@@ -101,7 +103,7 @@ def _gaussen_driest3(pr, tas_kelvin):
     return acc
 
 
-def build_arguments(fields):
+def build_arguments(fields, orbital=None):
     """Compute the (N_ARGS, lat, lon) stack of derived indices.
 
     Parameters
@@ -202,6 +204,18 @@ def build_arguments(fields):
 
     args[15] = ma.masked_invalid(Tbio)
     args[16] = ma.masked_invalid(T0bio)
+
+    # --- Thornthwaite-Feddema (slots 17, 18) ------------------------------
+    # Annual PE (thermal factor) and the Willmott-Feddema moisture index. PE
+    # needs the day length, hence the latitude and the orbit: pass orbital
+    # parameters for palaeo runs, or leave None for present day.
+    from .thornthwaite import annual_pe as _annual_pe, moisture_index as _mindex
+    T_c = mon_TAS.filled(np.nan)
+    lat2d = np.broadcast_to(lats.reshape(-1, 1), grid_shape).astype(float)
+    PE_ann = _annual_pe(T_c, lat2d, orb=orbital)
+    Im = _mindex(P_ann.filled(np.nan), PE_ann)
+    args[17] = ma.masked_invalid(PE_ann)
+    args[18] = ma.masked_invalid(Im)
 
     # Propagate the core temperature/precip mask to all layers.
     core_mask = ma.getmaskarray(T_min) | ma.getmaskarray(P_min)

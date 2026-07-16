@@ -62,9 +62,9 @@ def test_runs_and_labels_in_vocabulary(data_dir, typ):
 def test_cell_contract_all_classifiers():
     # A single mild temperate cell vector (15 elements) must classify under every
     # scheme and return a key present in that scheme's dictionary.
-    # 17 slots: 0-12 Koeppen, 13-14 Defaut, 15-16 Holdridge (Tbio, T0bio)
+    # 19 slots: 0-12 Koeppen, 13-14 Defaut, 15-16 Holdridge, 17-18 ThornFeddema
     args = [4.0, 20.0, 6, 11.0, 45.0, 900.0, 45.0, 70.0, 55.0, 95.0,
-            300.0, 0.5, 0, 900.0, 120.0, 11.5, 12.0]
+            300.0, 0.5, 0, 900.0, 120.0, 11.5, 12.0, 750.0, 0.2]
     for typ in CLASSIFICATIONS:
         labels, _ = get_cmap(typ)
         key = classify_cell(typ, args)
@@ -449,3 +449,128 @@ def test_diagram_refuses_koeppen(data_dir):
     args, _, _, _ = build_arguments(fields)
     with pytest.raises(ValueError, match="No decision-space diagram"):
         plot_diagram("peel", m, args, labels, cmap)
+
+
+def test_cross_diagram_survives_foreign_keys(data_dir):
+    """A diagram coloured by another scheme must not choke on its key format.
+
+    The Holdridge plotter reads the altitudinal belt out of the class key
+    ("Boreal Basal Humid" -> "Basal"). Colouring it with Defaut keys ("SH3c")
+    used to raise IndexError. The marker axis simply carries no information in
+    that case, which is honest; crashing is not.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    from pyzonae import plot_cross_diagram, build_arguments, load_climatology
+
+    kw = dict(
+        tas_file=os.path.join(data_dir, "tas.nc"),
+        pr_file=os.path.join(data_dir, "pr.nc"),
+        sftlf_file=os.path.join(data_dir, "sftlf.nc"),
+        orog_file=os.path.join(data_dir, "orog.nc"),
+    )
+    maps, labs, cms = {}, {}, {}
+    for t in ("peel", "Defaut96", "Holdridge"):
+        m, l, c, _, _ = run_classification(t, **kw)
+        maps[t], labs[t], cms[t] = m, l, c
+
+    fields = load_climatology(kw["tas_file"], kw["pr_file"],
+                              sftlf_file=kw["sftlf_file"],
+                              orog_file=kw["orog_file"])
+    args, _, _, _ = build_arguments(fields)
+
+    for space, colour_by in (("Defaut96", "peel"),
+                             ("Holdridge", "peel"),
+                             ("Holdridge", "Defaut96"),
+                             ("Defaut96", "Holdridge")):
+        fig, ax = plot_cross_diagram(space, colour_by, maps, labs, cms, args)
+        assert fig is not None, f"{colour_by} in {space} failed"
+
+
+# --- Thornthwaite-Feddema (2005) ------------------------------------------
+
+def test_thornfeddema_daylength_control_cases():
+    """Astronomical day length must hit the textbook values."""
+    from pyzonae.orbital import daylength_hours, OrbitalParameters
+    orb = OrbitalParameters()                       # present day
+    assert abs(daylength_hours(0.0, 15, orb) - 12.0) < 0.05       # equator
+    assert abs(daylength_hours(45.0, 80, orb) - 12.0) < 0.1       # equinox ~12h
+    assert daylength_hours(80.0, 356, orb) < 0.01                 # polar night
+    assert daylength_hours(80.0, 172, orb) > 23.99                # polar day
+
+
+def test_thornfeddema_pe_present_day_reduces_to_simple():
+    """With default (present-day) orbit, PE stays in a sane range."""
+    from pyzonae.thornthwaite import annual_pe
+    import numpy as np
+    # A temperate seasonal cycle at 45N.
+    t = np.array([-2, 0, 5, 10, 15, 20, 23, 22, 17, 11, 5, 0],
+                 dtype=float).reshape(12, 1)
+    pe = annual_pe(t, np.array([45.0]))[0]
+    assert 550 < pe < 800, f"temperate PE out of range: {pe:.0f}"
+
+
+def test_thornfeddema_pe_zero_below_freezing():
+    from pyzonae.thornthwaite import annual_pe
+    import numpy as np
+    t = np.full((12, 1), -5.0)
+    assert annual_pe(t, np.array([60.0]))[0] == 0.0
+
+
+def test_thornfeddema_pe_join_is_small_for_realistic_I():
+    """The Willmott T>26 branch joins the base branch with only a small step.
+
+    The step depends on the heat index I; for realistic climates (I ~ 20-60) it
+    is under ~2 mm/month. It is NOT zero -- the Willmott polynomial fits
+    Thornthwaite's table independently of I -- so this is a bound, not equality.
+    """
+    from pyzonae.thornthwaite import _exponent_a
+    for I in (20.0, 40.0, 60.0):
+        a = _exponent_a(I)
+        base = 16.0 * (10.0 * 26.0 / I) ** a
+        hot = -415.85 + 32.24 * 26.0 - 0.43 * 26.0 ** 2
+        assert abs(base - hot) < 2.0, f"join step too large at I={I}: {base-hot:.2f}"
+
+
+def test_thornfeddema_moisture_index_bounds_and_symmetry():
+    from pyzonae.thornthwaite import moisture_index
+    import numpy as np
+    assert abs(float(moisture_index(np.array(1000.), np.array(500.))) - 0.5) < 1e-9
+    assert abs(float(moisture_index(np.array(500.), np.array(1000.))) + 0.5) < 1e-9
+    assert float(moisture_index(np.array(800.), np.array(800.))) == 0.0
+    assert float(moisture_index(np.array(0.), np.array(600.))) == -1.0
+    assert float(moisture_index(np.array(1200.), np.array(0.))) == 1.0
+
+
+def test_thornfeddema_orbital_changes_classification(data_dir):
+    """Palaeo orbital parameters must actually move some cells."""
+    from pyzonae.orbital import OrbitalParameters
+    import numpy as np
+    kw = dict(
+        tas_file=os.path.join(data_dir, "tas.nc"),
+        pr_file=os.path.join(data_dir, "pr.nc"),
+        sftlf_file=os.path.join(data_dir, "sftlf.nc"),
+    )
+    m0, _, _, _, _ = run_classification("ThornFeddema05", **kw)
+    orb = OrbitalParameters(obliquity=22.0, eccentricity=0.05,
+                            perihelion_longitude=114.0)
+    m1, _, _, _, _ = run_classification("ThornFeddema05", orbital=orb, **kw)
+    assert not np.array_equal(m0.filled(-1), m1.filled(-1)), \
+        "orbital parameters had no effect"
+
+
+def test_thornfeddema_key_format(data_dir):
+    """Keys are '<Moisture> <Thermal>', both from Feddema's tables."""
+    from pyzonae.classifiers.thornfeddema import MOISTURE_TYPES, THERMAL_TYPES
+    moist = {m for m, _ in MOISTURE_TYPES}
+    therm = {t for t, _ in THERMAL_TYPES}
+    m, labels, _, _, _ = run_classification(
+        "ThornFeddema05",
+        tas_file=os.path.join(data_dir, "tas.nc"),
+        pr_file=os.path.join(data_dir, "pr.nc"),
+        sftlf_file=os.path.join(data_dir, "sftlf.nc"),
+    )
+    inv = {v: k for k, v in labels.items()}
+    for v in set(int(x) for x in m.compressed()):
+        parts = inv[v].split()
+        assert len(parts) == 2 and parts[0] in moist and parts[1] in therm

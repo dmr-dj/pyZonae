@@ -46,10 +46,11 @@ from .run import run_classification
 from .derive import build_arguments
 from .io import load_climatology
 from .diagrams import plot_diagram, plot_cross_diagram, DIAGRAMS
+from .orbital import OrbitalParameters
 
 __all__ = [
     "classify_cell", "CLASSIFICATIONS", "get_cmap", "run_classification",
     "build_arguments", "load_climatology", "plot_diagram",
-    "plot_cross_diagram", "DIAGRAMS",
+    "plot_cross_diagram", "DIAGRAMS", "OrbitalParameters",
 ]
 __version__ = "0.1.0"

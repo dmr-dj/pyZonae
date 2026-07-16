@@ -37,6 +37,7 @@ def run_classification(
     frost_line=None,
     frost_threshold=0.0,
     holdridge_rule="fuzzy",
+    orbital=None,
     tas_var=None,
     pr_var=None,
     sftlf_var=None,
@@ -89,7 +90,7 @@ def run_classification(
         frost_line=frost_line, frost_threshold=frost_threshold,
         pr_scale=pr_scale, pr_units=pr_units, tas_units=tas_units,
     )
-    args, grid_shape, lats, lons = build_arguments(fields)
+    args, grid_shape, lats, lons = build_arguments(fields, orbital=orbital)
 
     n = int(np.prod(grid_shape))
     flat = args.reshape(args.shape[0], n)

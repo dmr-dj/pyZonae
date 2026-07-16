@@ -44,6 +44,14 @@ def main():
                          "holding a frost-free mask")
     ap.add_argument("--frost-threshold", type=float, default=0.0,
                     help="threshold in degC used with --frost-line coldest_month")
+    ap.add_argument("--obliquity", type=float, default=None,
+                    help="ThornFeddema05: orbital obliquity in degrees "
+                         "(palaeo runs; default present-day 23.44)")
+    ap.add_argument("--eccentricity", type=float, default=None,
+                    help="ThornFeddema05: orbital eccentricity (default 0.0167)")
+    ap.add_argument("--perihelion-longitude", type=float, default=None,
+                    help="ThornFeddema05: longitude of perihelion in degrees "
+                         "(default 282.9)")
     ap.add_argument("--tas-var", default=None,
                     help="temperature variable name (default: auto-detect tas/t2m/tmp/...)")
     ap.add_argument("--pr-var", default=None,
@@ -72,11 +80,23 @@ def main():
     ap.add_argument("--progress", action="store_true")
     a = ap.parse_args()
 
+    orbital = None
+    if any(v is not None for v in (a.obliquity, a.eccentricity,
+                                   a.perihelion_longitude)):
+        from pyzonae.orbital import OrbitalParameters
+        defaults = OrbitalParameters()
+        orbital = OrbitalParameters(
+            obliquity=a.obliquity if a.obliquity is not None else defaults.obliquity,
+            eccentricity=a.eccentricity if a.eccentricity is not None else defaults.eccentricity,
+            perihelion_longitude=a.perihelion_longitude if a.perihelion_longitude is not None else defaults.perihelion_longitude,
+        )
+
     m, labels, cmap, lons, lats = run_classification(
         typ_classification=a.classification,
         tas_file=a.tas, pr_file=a.pr, sftlf_file=a.sftlf,
         orog_file=a.orog, orog_var=a.orog_var,
         holdridge_rule=a.holdridge_rule,
+        orbital=orbital,
         frost_line=a.frost_line, frost_threshold=a.frost_threshold,
         tas_var=a.tas_var, pr_var=a.pr_var, sftlf_var=a.sftlf_var,
         tas_units=a.tas_units, pr_scale=a.pr_scale, pr_units=a.pr_units,

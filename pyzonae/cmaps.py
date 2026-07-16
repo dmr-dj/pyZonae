@@ -567,6 +567,40 @@ def Holdridge_cmap():
 
 
 # --------------------------------------------------------------------------
+# Thornthwaite-Feddema (2005), two main factors
+# --------------------------------------------------------------------------
+def ThornFeddema_cmap():
+    """Labels and colours for the two-factor Thornthwaite-Feddema classification.
+
+    Following Feddema's Fig. 10: the moisture class sets the HUE (violet-blue for
+    wet through green, yellow, to red for arid), and the thermal class sets the
+    LIGHTNESS (dark = hot/torrid, light = frost). 6 x 6 = 36 classes.
+    """
+    import colorsys
+    from .classifiers.thornfeddema import MOISTURE_TYPES, THERMAL_TYPES
+
+    # Hue per moisture class, wettest -> driest (violet ~0.78 down to red ~0.0).
+    moist_names = [m for m, _ in MOISTURE_TYPES]           # Arid..Saturated
+    hues = {
+        "Saturated": 0.78, "Wet": 0.60, "Moist": 0.36,
+        "Dry": 0.17, "Semiarid": 0.09, "Arid": 0.01,
+    }
+    therm_names = [t for t, _ in THERMAL_TYPES]            # Frost..Torrid
+
+    labels, colors = {}, []
+    idx = 1
+    for m in moist_names:
+        for j, t in enumerate(therm_names):
+            # light for cold (Frost), dark for hot (Torrid)
+            light = 0.82 - 0.46 * (j / (len(therm_names) - 1))
+            r, g, b = colorsys.hls_to_rgb(hues[m], light, 0.72)
+            labels[f"{m} {t}"] = idx
+            colors.append(mpl.colors.to_hex((r, g, b)))
+            idx += 1
+    return labels, mpl.colors.ListedColormap(colors)
+
+
+# --------------------------------------------------------------------------
 # Registry: classification name -> colormap/label provider
 # --------------------------------------------------------------------------
 CMAP_REGISTRY = {
@@ -576,6 +610,7 @@ CMAP_REGISTRY = {
     "trewartha": KG_cmap_2014,
     "Defaut96":  Defaut_cmap_1996,
     "Holdridge": Holdridge_cmap,
+    "ThornFeddema05": ThornFeddema_cmap,
 }
 
 

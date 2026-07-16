@@ -25,10 +25,11 @@ key that :mod:`pyzonae.cmaps` knows how to color.
 from .classifiers import koeppen as _kg
 from .classifiers import defaut as _df
 from .classifiers import holdridge as _hl
+from .classifiers import thornfeddema as _tf
 
 # Names accepted for typ_classification.
 CLASSIFICATIONS = ("kottek", "peel", "cannon", "trewartha", "Defaut96",
-                   "Holdridge")
+                   "Holdridge", "ThornFeddema05")
 
 
 def classify_cell(typ_classification, arguments, **options):
@@ -61,6 +62,8 @@ def classify_cell(typ_classification, arguments, **options):
             frost_free=options.get("frost_free", None),
         )
         return key if key is not None else "Outside Holdridge model"
+    if typ_classification == "ThornFeddema05":
+        return _tf.get_thornfeddema_classification(arguments)
     raise ValueError(
         f"Unknown classification '{typ_classification}'. "
         f"Known: {CLASSIFICATIONS}"
