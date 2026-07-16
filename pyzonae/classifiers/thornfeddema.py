@@ -81,18 +81,44 @@ def thermal_type(pe_ann):
     return _bucket(pe_ann, THERMAL_TYPES)
 
 
-def get_thornfeddema_classification(arguments):
-    """Classify one cell into a two-factor Thornthwaite-Feddema type.
+def get_thornfeddema_classification(arguments, factors=2):
+    """Classify one cell into a Thornthwaite-Feddema type.
 
-    Uses derived slots 17 (annual PE) and 18 (moisture index Im).
+    Parameters
+    ----------
+    arguments : sequence
+        Derived indices. Uses slot 17 (annual PE) and 18 (moisture index Im).
+    factors : {2, 4}
+        Number of Feddema factors to apply.
 
-    Returns a key like ``"Moist Warm"``, or ``None`` if either factor is
-    undefined.
+        * ``2`` (default) -- the two primary factors, moisture x thermal
+          (Feddema Tables 5-6). Key ``"<Moisture> <Thermal>"``, e.g.
+          ``"Moist Warm"``.
+        * ``4`` -- adds the two seasonality factors (Tables 7-8). Not yet
+          implemented; requested here so the interface is stable, but it raises
+          rather than silently returning a two-factor key.
+
+    Returns
+    -------
+    str or None
+        The class key, or ``None`` if a factor is undefined.
     """
+    if factors not in (2, 4):
+        raise ValueError(f"factors must be 2 or 4, got {factors!r}")
+
     pe_ann = arguments[17]
     im = arguments[18]
     m = moisture_type(im)
     t = thermal_type(pe_ann)
     if m is None or t is None:
         return None
-    return f"{m} {t}"
+
+    if factors == 2:
+        return f"{m} {t}"
+
+    # factors == 4: the seasonality and cause factors (Tables 7-8) still to come.
+    raise NotImplementedError(
+        "The four-factor Thornthwaite-Feddema classification (adding seasonality "
+        "and its cause, Feddema Tables 7-8) is not implemented yet. Use factors=2 "
+        "for the moisture x thermal classification."
+    )

@@ -37,6 +37,7 @@ def run_classification(
     frost_line=None,
     frost_threshold=0.0,
     holdridge_rule="fuzzy",
+    tf_factors=2,
     orbital=None,
     tas_var=None,
     pr_var=None,
@@ -111,6 +112,8 @@ def run_classification(
             if ff_flat is not None:
                 v = ff_flat[i]
                 opts["frost_free"] = None if (v is None or (isinstance(v, float) and np.isnan(v))) else bool(v)
+        elif typ_classification == "ThornFeddema05":
+            opts["tf_factors"] = tf_factors
         key = classify_cell(typ_classification, flat[:, i], **opts)
         class_flat[i] = label_dict.get(key, max(label_dict.values()))
         if progress and (i % max(1, n // 20) == 0):

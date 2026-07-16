@@ -63,7 +63,8 @@ def classify_cell(typ_classification, arguments, **options):
         )
         return key if key is not None else "Outside Holdridge model"
     if typ_classification == "ThornFeddema05":
-        return _tf.get_thornfeddema_classification(arguments)
+        return _tf.get_thornfeddema_classification(
+            arguments, factors=options.get("tf_factors", 2))
     raise ValueError(
         f"Unknown classification '{typ_classification}'. "
         f"Known: {CLASSIFICATIONS}"

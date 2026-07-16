@@ -432,7 +432,10 @@ This first version implements Feddema's two primary factors (his Tables 5-6):
 * **Thermal** — the annual PE, in six equal 300 mm classes (Frost … Torrid).
 
 Class keys are `"<Moisture> <Thermal>"`, e.g. `"Moist Warm"`. The two seasonality
-factors (Tables 7-8) are planned for a later version.
+factors (Tables 7-8) are planned; the interface for them already exists as
+`factors=4` (CLI `--tf-factors 4`), which for now raises a clear "not yet
+implemented" error rather than silently returning a two-factor result. The
+default is `factors=2`.
 
 ```bash
 python scripts/classify_map.py --classification ThornFeddema05 \

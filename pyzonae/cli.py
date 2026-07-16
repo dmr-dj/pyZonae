@@ -52,6 +52,9 @@ def main():
     ap.add_argument("--perihelion-longitude", type=float, default=None,
                     help="ThornFeddema05: longitude of perihelion in degrees "
                          "(default 282.9)")
+    ap.add_argument("--tf-factors", type=int, default=2, choices=[2, 4],
+                    help="ThornFeddema05: 2 factors (moisture x thermal, default) "
+                         "or 4 (adds seasonality; not yet implemented)")
     ap.add_argument("--tas-var", default=None,
                     help="temperature variable name (default: auto-detect tas/t2m/tmp/...)")
     ap.add_argument("--pr-var", default=None,
@@ -96,6 +99,7 @@ def main():
         tas_file=a.tas, pr_file=a.pr, sftlf_file=a.sftlf,
         orog_file=a.orog, orog_var=a.orog_var,
         holdridge_rule=a.holdridge_rule,
+        tf_factors=a.tf_factors,
         orbital=orbital,
         frost_line=a.frost_line, frost_threshold=a.frost_threshold,
         tas_var=a.tas_var, pr_var=a.pr_var, sftlf_var=a.sftlf_var,

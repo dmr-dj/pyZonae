@@ -611,3 +611,28 @@ def test_time_axis_name_is_autodetected(tmp_path):
 
     assert np.array_equal(m_ref.filled(-1), m_ren.filled(-1)), \
         "renaming the time axis changed the classification"
+
+
+def test_thornfeddema_factors_selection(data_dir):
+    """factors=2 is the default; factors=4 is reserved but not yet implemented."""
+    kw = dict(
+        tas_file=os.path.join(data_dir, "tas.nc"),
+        pr_file=os.path.join(data_dir, "pr.nc"),
+        sftlf_file=os.path.join(data_dir, "sftlf.nc"),
+    )
+    # Default equals explicit factors=2.
+    m0, _, _, _, _ = run_classification("ThornFeddema05", **kw)
+    m2, _, _, _, _ = run_classification("ThornFeddema05", tf_factors=2, **kw)
+    assert np.array_equal(m0.filled(-1), m2.filled(-1))
+
+    # factors=4 is a stable interface but must not silently fall back to 2.
+    with pytest.raises(NotImplementedError):
+        run_classification("ThornFeddema05", tf_factors=4, **kw)
+
+    # An invalid factor count is rejected at the classifier.
+    from pyzonae.classifiers.thornfeddema import get_thornfeddema_classification
+    args = [0.0] * 19
+    args[17] = 750.0
+    args[18] = 0.2
+    with pytest.raises(ValueError):
+        get_thornfeddema_classification(args, factors=3)
