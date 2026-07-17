@@ -425,17 +425,25 @@ potential evapotranspiration (PE) and a moisture balance, which makes it a
 genuine water-availability classification rather than one of temperature and
 precipitation thresholds.
 
-This first version implements Feddema's two primary factors (his Tables 5-6):
+This version implements all four of Feddema's factors:
 
 * **Moisture** — the Willmott-Feddema index `Im = 1 − PE/P` (wet) or `P/PE − 1`
   (dry), bounded in [−1, 1], split into six classes (Arid … Saturated).
 * **Thermal** — the annual PE, in six equal 300 mm classes (Frost … Torrid).
+* **Seasonality** — the annual range of the *monthly* moisture index, in four
+  classes (Low, Medium, High, Extreme).
+* **Cause of seasonality** — the ratio `range(P) / range(PE)` over the year:
+  precipitation-driven (> 2), combination (0.5–2), or temperature-driven (< 0.5).
 
-Class keys are `"<Moisture> <Thermal>"`, e.g. `"Moist Warm"`. The two seasonality
-factors (Tables 7-8) are planned; the interface for them already exists as
-`factors=4` (CLI `--tf-factors 4`), which for now raises a clear "not yet
-implemented" error rather than silently returning a two-factor result. The
-default is `factors=2`.
+Two factors are selected with `factors=2` (CLI `--tf-factors 2`, the default) and
+give keys `"<Moisture> <Thermal>"`, e.g. `"Moist Warm"`. Four factors
+(`factors=4` / `--tf-factors 4`) give keys `"<Moisture> <Thermal> <Seasonality>
+<Cause>"`, e.g. `"Arid Hot Extreme Precipitation"`.
+
+When seasonality is `Low` there is no meaningful season, so the cause is reported
+as `Aseasonal` (e.g. `"Saturated Frost Low Aseasonal"`) rather than a spurious
+label. The key keeps four terms so its length is fixed for comparison across
+runs, while saying honestly that no season means no cause.
 
 ```bash
 python scripts/classify_map.py --classification ThornFeddema05 \

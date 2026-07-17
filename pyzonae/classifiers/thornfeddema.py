@@ -56,6 +56,26 @@ THERMAL_TYPES = [
 ]
 
 
+# Table 7: seasonality from the annual range of the monthly moisture index.
+SEASONALITY_TYPES = [
+    ("Low", 0.0),
+    ("Medium", 0.5),
+    ("High", 1.0),
+    ("Extreme", 1.5),
+]
+
+# Table 8: cause of the seasonality, from range(P) / range(PE) over the year.
+# Below 0.5 the variability is driven by PE (temperature); above 2.0 by
+# precipitation; between, a combination. When there is no season to speak of
+# (seasonality == "Low"), the cause is reported as "Aseasonal" rather than a
+# spurious label -- the key stays four terms, but says honestly that no season
+# means no cause.
+CAUSE_TEMPERATURE = "Temperature"
+CAUSE_COMBINATION = "Combination"
+CAUSE_PRECIPITATION = "Precipitation"
+CAUSE_ASEASONAL = "Aseasonal"
+
+
 def _bucket(value, table):
     """Name of the class whose lower bound is the greatest not exceeding value."""
     name = table[0][0]
@@ -79,6 +99,31 @@ def thermal_type(pe_ann):
     if pe_ann is None or (isinstance(pe_ann, float) and np.isnan(pe_ann)):
         return None
     return _bucket(pe_ann, THERMAL_TYPES)
+
+
+def seasonality_type(im_range):
+    """Feddema seasonality class from the annual range of monthly Im."""
+    if im_range is None or (isinstance(im_range, float) and np.isnan(im_range)):
+        return None
+    return _bucket(im_range, SEASONALITY_TYPES)
+
+
+def cause_type(cause_ratio, seasonality):
+    """Feddema cause-of-seasonality class.
+
+    Returns ``"Aseasonal"`` when ``seasonality == "Low"`` (no meaningful season),
+    otherwise buckets range(P)/range(PE): < 0.5 temperature-driven, > 2.0
+    precipitation-driven, between a combination.
+    """
+    if seasonality == "Low":
+        return CAUSE_ASEASONAL
+    if cause_ratio is None or (isinstance(cause_ratio, float) and np.isnan(cause_ratio)):
+        return None
+    if cause_ratio < 0.5:
+        return CAUSE_TEMPERATURE
+    if cause_ratio <= 2.0:
+        return CAUSE_COMBINATION
+    return CAUSE_PRECIPITATION
 
 
 def get_thornfeddema_classification(arguments, factors=2):
@@ -116,9 +161,13 @@ def get_thornfeddema_classification(arguments, factors=2):
     if factors == 2:
         return f"{m} {t}"
 
-    # factors == 4: the seasonality and cause factors (Tables 7-8) still to come.
-    raise NotImplementedError(
-        "The four-factor Thornthwaite-Feddema classification (adding seasonality "
-        "and its cause, Feddema Tables 7-8) is not implemented yet. Use factors=2 "
-        "for the moisture x thermal classification."
-    )
+    # factors == 4: add seasonality (Table 7) and its cause (Table 8).
+    im_range = arguments[19]
+    cause_ratio = arguments[20]
+    s = seasonality_type(im_range)
+    if s is None:
+        return None
+    c = cause_type(cause_ratio, s)
+    if c is None:
+        return None
+    return f"{m} {t} {s} {c}"

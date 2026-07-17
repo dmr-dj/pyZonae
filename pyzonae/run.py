@@ -73,7 +73,7 @@ def run_classification(
     cmap : matplotlib colormap
     lons, lats : coordinate arrays
     """
-    label_dict, cmap = get_cmap(typ_classification)
+    label_dict, cmap = get_cmap(typ_classification, factors=tf_factors)
 
     if typ_classification == "Holdridge" and orog_file is None:
         raise ValueError(

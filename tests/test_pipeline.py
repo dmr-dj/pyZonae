@@ -614,7 +614,7 @@ def test_time_axis_name_is_autodetected(tmp_path):
 
 
 def test_thornfeddema_factors_selection(data_dir):
-    """factors=2 is the default; factors=4 is reserved but not yet implemented."""
+    """factors=2 is the default; factors=4 adds seasonality and cause."""
     kw = dict(
         tas_file=os.path.join(data_dir, "tas.nc"),
         pr_file=os.path.join(data_dir, "pr.nc"),
@@ -625,14 +625,51 @@ def test_thornfeddema_factors_selection(data_dir):
     m2, _, _, _, _ = run_classification("ThornFeddema05", tf_factors=2, **kw)
     assert np.array_equal(m0.filled(-1), m2.filled(-1))
 
-    # factors=4 is a stable interface but must not silently fall back to 2.
-    with pytest.raises(NotImplementedError):
-        run_classification("ThornFeddema05", tf_factors=4, **kw)
+    # factors=4 produces a different, finer partition.
+    m4, l4, _, _, _ = run_classification("ThornFeddema05", tf_factors=4, **kw)
+    assert not np.array_equal(m0.filled(-1), m4.filled(-1))
 
     # An invalid factor count is rejected at the classifier.
     from pyzonae.classifiers.thornfeddema import get_thornfeddema_classification
-    args = [0.0] * 19
+    args = [0.0] * 21
     args[17] = 750.0
     args[18] = 0.2
     with pytest.raises(ValueError):
         get_thornfeddema_classification(args, factors=3)
+
+
+def test_thornfeddema_four_factor_key_structure(data_dir):
+    """Every four-factor key has four terms, and Aseasonal <=> Low seasonality."""
+    m, labels, _, _, _ = run_classification(
+        "ThornFeddema05", tf_factors=4,
+        tas_file=os.path.join(data_dir, "tas.nc"),
+        pr_file=os.path.join(data_dir, "pr.nc"),
+        sftlf_file=os.path.join(data_dir, "sftlf.nc"),
+    )
+    inv = {v: k for k, v in labels.items()}
+    present = {inv[int(v)] for v in m.compressed()}
+    for k in present:
+        parts = k.split()
+        assert len(parts) == 4, f"{k!r} is not four terms"
+        seas, cause = parts[2], parts[3]
+        # The cause is 'Aseasonal' if and only if the season is 'Low'.
+        assert (seas == "Low") == (cause == "Aseasonal"), \
+            f"Aseasonal/Low mismatch in {k!r}"
+
+
+def test_thornfeddema_cause_logic():
+    """cause_type: Aseasonal under Low, otherwise bucketed by the ratio."""
+    from pyzonae.classifiers.thornfeddema import cause_type
+    assert cause_type(0.3, "Low") == "Aseasonal"      # season 'Low' wins
+    assert cause_type(99.0, "Low") == "Aseasonal"
+    assert cause_type(0.3, "High") == "Temperature"   # PE-driven
+    assert cause_type(1.0, "High") == "Combination"
+    assert cause_type(5.0, "High") == "Precipitation"  # P-driven
+
+
+def test_thornfeddema_seasonality_buckets():
+    from pyzonae.classifiers.thornfeddema import seasonality_type
+    assert seasonality_type(0.2) == "Low"
+    assert seasonality_type(0.7) == "Medium"
+    assert seasonality_type(1.2) == "High"
+    assert seasonality_type(1.8) == "Extreme"

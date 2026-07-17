@@ -569,34 +569,66 @@ def Holdridge_cmap():
 # --------------------------------------------------------------------------
 # Thornthwaite-Feddema (2005), two main factors
 # --------------------------------------------------------------------------
-def ThornFeddema_cmap():
-    """Labels and colours for the two-factor Thornthwaite-Feddema classification.
+def ThornFeddema_cmap(factors=2):
+    """Labels and colours for the Thornthwaite-Feddema classification.
 
     Following Feddema's Fig. 10: the moisture class sets the HUE (violet-blue for
     wet through green, yellow, to red for arid), and the thermal class sets the
-    LIGHTNESS (dark = hot/torrid, light = frost). 6 x 6 = 36 classes.
+    LIGHTNESS (dark = hot/torrid, light = frost).
+
+    With ``factors=2`` this is the 6 x 6 = 36 moisture x thermal palette. With
+    ``factors=4`` the seasonality and cause terms are appended to every key and
+    given a small saturation/lightness nudge, so a four-factor class map still
+    colours by the same moisture-hue / thermal-lightness scheme (the extra
+    factors read as shade variants). Only classes actually present are ever shown,
+    so the ~360-entry vocabulary is not a legibility problem in practice.
     """
     import colorsys
-    from .classifiers.thornfeddema import MOISTURE_TYPES, THERMAL_TYPES
+    from .classifiers.thornfeddema import (
+        MOISTURE_TYPES, THERMAL_TYPES, SEASONALITY_TYPES,
+        CAUSE_TEMPERATURE, CAUSE_COMBINATION, CAUSE_PRECIPITATION,
+        CAUSE_ASEASONAL,
+    )
 
-    # Hue per moisture class, wettest -> driest (violet ~0.78 down to red ~0.0).
-    moist_names = [m for m, _ in MOISTURE_TYPES]           # Arid..Saturated
+    moist_names = [m for m, _ in MOISTURE_TYPES]
     hues = {
         "Saturated": 0.78, "Wet": 0.60, "Moist": 0.36,
         "Dry": 0.17, "Semiarid": 0.09, "Arid": 0.01,
     }
-    therm_names = [t for t, _ in THERMAL_TYPES]            # Frost..Torrid
+    therm_names = [t for t, _ in THERMAL_TYPES]
 
     labels, colors = {}, []
     idx = 1
+
+    def _emit(key, hue, light, sat):
+        nonlocal idx
+        r, g, b = colorsys.hls_to_rgb(hue, light, sat)
+        labels[key] = idx
+        colors.append(mpl.colors.to_hex((r, g, b)))
+        idx += 1
+
+    if factors == 2:
+        for m in moist_names:
+            for j, t in enumerate(therm_names):
+                light = 0.82 - 0.46 * (j / (len(therm_names) - 1))
+                _emit(f"{m} {t}", hues[m], light, 0.72)
+        return labels, mpl.colors.ListedColormap(colors)
+
+    # factors == 4: append seasonality x cause. The reachable combinations are
+    # Low->Aseasonal, and {Medium,High,Extreme} x {Temperature,Combination,
+    # Precipitation}.
+    seas_names = [s for s, _ in SEASONALITY_TYPES]
+    causes = [CAUSE_TEMPERATURE, CAUSE_COMBINATION, CAUSE_PRECIPITATION]
     for m in moist_names:
         for j, t in enumerate(therm_names):
-            # light for cold (Frost), dark for hot (Torrid)
-            light = 0.82 - 0.46 * (j / (len(therm_names) - 1))
-            r, g, b = colorsys.hls_to_rgb(hues[m], light, 0.72)
-            labels[f"{m} {t}"] = idx
-            colors.append(mpl.colors.to_hex((r, g, b)))
-            idx += 1
+            light0 = 0.82 - 0.46 * (j / (len(therm_names) - 1))
+            for si, s in enumerate(seas_names):
+                # seasonality nudges lightness slightly; cause nudges saturation
+                light = np.clip(light0 + 0.05 * (si - 1.5) / 1.5, 0.12, 0.9)
+                sc = [(CAUSE_ASEASONAL,)] if s == "Low" else [(c,) for c in causes]
+                for ci, (c,) in enumerate(sc):
+                    sat = 0.72 if s == "Low" else (0.55 + 0.17 * ci)
+                    _emit(f"{m} {t} {s} {c}", hues[m], float(light), float(sat))
     return labels, mpl.colors.ListedColormap(colors)
 
 
@@ -614,8 +646,12 @@ CMAP_REGISTRY = {
 }
 
 
-def get_cmap(typ_classification):
+def get_cmap(typ_classification, **kwargs):
     """Return ``(label_dict, colormap)`` for a classification name.
+
+    Extra keyword arguments are forwarded to the colormap generator when it
+    accepts them (e.g. ``factors=4`` for ThornFeddema05); generators that take no
+    arguments ignore them.
 
     Raises
     ------
@@ -623,9 +659,13 @@ def get_cmap(typ_classification):
         If ``typ_classification`` is not a known classification.
     """
     try:
-        return CMAP_REGISTRY[typ_classification]()
+        gen = CMAP_REGISTRY[typ_classification]
     except KeyError:
         raise KeyError(
             f"Unknown classification '{typ_classification}'. "
             f"Known: {sorted(CMAP_REGISTRY)}"
         )
+    import inspect
+    params = inspect.signature(gen).parameters
+    accepted = {k: v for k, v in kwargs.items() if k in params}
+    return gen(**accepted)

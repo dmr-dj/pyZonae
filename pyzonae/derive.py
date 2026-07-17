@@ -36,15 +36,19 @@ variables the Defaut scheme needs:
    16: T0bio    Holdridge sea-level biotemperature (degC)
    17: PE_ann   Thornthwaite annual PE             (mm/yr)  [Feddema thermal factor]
    18: Im       Willmott-Feddema moisture index    (-1..1)  [Feddema moisture factor]
+   19: Im_range annual range of monthly Im         (0..2)   [Feddema seasonality]
+   20: causeR   range(P)/range(PE) over the year   (>=0)    [Feddema seasonality cause]
 
 Summer/winter half-years follow pyKoeppen: Apr-Sep is "summer" in the northern
 hemisphere and is swapped with the winter slice south of the equator.
 """
 
+import warnings
+
 import numpy as np
 from numpy import ma
 
-N_ARGS = 19
+N_ARGS = 21
 
 
 def _maxminsum_slice(mon, lo, hi):
@@ -209,13 +213,37 @@ def build_arguments(fields, orbital=None):
     # Annual PE (thermal factor) and the Willmott-Feddema moisture index. PE
     # needs the day length, hence the latitude and the orbit: pass orbital
     # parameters for palaeo runs, or leave None for present day.
-    from .thornthwaite import annual_pe as _annual_pe, moisture_index as _mindex
+    from .thornthwaite import (annual_pe as _annual_pe, moisture_index as _mindex,
+                               monthly_moisture_index as _mmindex,
+                               potential_evapotranspiration as _pe_monthly)
     T_c = mon_TAS.filled(np.nan)
     lat2d = np.broadcast_to(lats.reshape(-1, 1), grid_shape).astype(float)
     PE_ann = _annual_pe(T_c, lat2d, orb=orbital)
     Im = _mindex(P_ann.filled(np.nan), PE_ann)
     args[17] = ma.masked_invalid(PE_ann)
     args[18] = ma.masked_invalid(Im)
+
+    # --- Thornthwaite-Feddema seasonality factors (slots 19, 20) ----------
+    # Factor 3: seasonality = annual range of the MONTHLY moisture index. Bounded
+    #   in [0, 2] since monthly Im is in [-1, 1].
+    # Factor 4 support: the cause ratio = range(P) / range(PE) over the year. The
+    #   two factors of the four-factor classification are read from these by the
+    #   classifier; only computed here, where the 12 months are in hand.
+    P_monthly = mon_PRC.filled(np.nan)
+    Im_monthly = _mmindex(P_monthly, T_c, lat2d, orb=orbital)
+    PE_monthly = _pe_monthly(T_c, lat2d, orb=orbital)
+    # Ocean cells are all-NaN columns; nanmax/nanmin warn on those. The results
+    # are masked out downstream, so silence the expected warning.
+    with np.errstate(invalid="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        seas_range = np.nanmax(Im_monthly, axis=0) - np.nanmin(Im_monthly, axis=0)
+        range_P = np.nanmax(P_monthly, axis=0) - np.nanmin(P_monthly, axis=0)
+        range_PE = np.nanmax(PE_monthly, axis=0) - np.nanmin(PE_monthly, axis=0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        cause_ratio = np.where(range_PE > 1.0, range_P / range_PE, 999.0)
+
+    args[19] = ma.masked_invalid(seas_range)
+    args[20] = ma.masked_invalid(cause_ratio)
 
     # Propagate the core temperature/precip mask to all layers.
     core_mask = ma.getmaskarray(T_min) | ma.getmaskarray(P_min)
