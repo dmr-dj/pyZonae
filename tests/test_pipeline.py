@@ -673,3 +673,66 @@ def test_thornfeddema_seasonality_buckets():
     assert seasonality_type(0.7) == "Medium"
     assert seasonality_type(1.2) == "High"
     assert seasonality_type(1.8) == "Extreme"
+
+
+# --- Whittaker biomes ------------------------------------------------------
+
+def test_whittaker_reference_points():
+    """Textbook climates must land in the expected biome."""
+    from pyzonae.classifiers.whittaker import biome_of
+    # (temperature degC, precipitation cm/yr) -> biome
+    assert biome_of(-12, 20) == "Tundra"
+    assert biome_of(-3, 45) == "Boreal forest"
+    assert biome_of(25, 5) == "Subtropical desert"
+    assert biome_of(26, 300) == "Tropical rain forest"
+
+
+def test_whittaker_outside_diagram():
+    """Points beyond the vegetated envelope fall outside the diagram."""
+    from pyzonae.classifiers.whittaker import biome_of, OUTSIDE
+    assert biome_of(-40, 15) == OUTSIDE     # far too cold (ice sheet)
+    assert biome_of(30, 1) == OUTSIDE       # hotter/drier than any biome
+    # NaN propagates to None.
+    assert biome_of(float("nan"), 50) is None
+
+
+def test_whittaker_polygons_do_not_overlap():
+    """The plotbiomes digitization is a clean partition: no point in two biomes."""
+    import numpy as np
+    from matplotlib.path import Path
+    from pyzonae.whittaker_data import BIOME_POLYGONS, BIOME_NAMES
+    paths = {b: Path(np.asarray(v)) for b, v in BIOME_POLYGONS.items()}
+    rng = np.random.default_rng(0)
+    # Sample the covered box and check no point is claimed by two polygons.
+    for _ in range(2000):
+        t = rng.uniform(-16, 30)
+        p = rng.uniform(0, 445)
+        hits = sum(paths[b].contains_point((t, p)) for b in BIOME_NAMES)
+        assert hits <= 1, f"overlap at ({t:.1f}, {p:.1f})"
+
+
+def test_whittaker_unit_conversion_mm_to_cm():
+    """The classifier converts precipitation mm/yr -> cm/yr (factor 10)."""
+    from pyzonae.classifiers.whittaker import get_whittaker_classification, biome_of
+    args = [0.0] * 21
+    args[3] = 26.0        # temperature
+    args[5] = 3000.0      # precipitation in mm/yr == 300 cm/yr
+    # Must equal calling biome_of with 300 cm, not 3000 cm.
+    assert get_whittaker_classification(args) == biome_of(26.0, 300.0)
+    assert get_whittaker_classification(args) != biome_of(26.0, 3000.0)
+
+
+def test_whittaker_runs_on_synthetic(data_dir):
+    """End-to-end run produces only known biome labels."""
+    from pyzonae.whittaker_data import BIOME_NAMES
+    from pyzonae.classifiers.whittaker import OUTSIDE
+    m, labels, _, _, _ = run_classification(
+        "Whittaker",
+        tas_file=os.path.join(data_dir, "tas.nc"),
+        pr_file=os.path.join(data_dir, "pr.nc"),
+        sftlf_file=os.path.join(data_dir, "sftlf.nc"),
+    )
+    valid = set(BIOME_NAMES) | {OUTSIDE}
+    inv = {v: k for k, v in labels.items()}
+    for v in set(int(x) for x in m.compressed()):
+        assert inv[v] in valid

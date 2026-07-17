@@ -633,6 +633,28 @@ def ThornFeddema_cmap(factors=2):
 
 
 # --------------------------------------------------------------------------
+# Whittaker (1970) biomes
+# --------------------------------------------------------------------------
+def Whittaker_cmap():
+    """Labels and colours for the Whittaker biome classification.
+
+    Uses the official Ricklefs (2008) biome colours carried in
+    :mod:`pyzonae.whittaker_data`, in the canonical biome order, plus a neutral
+    grey for cells that fall outside the diagram.
+    """
+    from .whittaker_data import BIOME_NAMES, BIOME_COLORS
+    from .classifiers.whittaker import OUTSIDE
+
+    labels, colors = {}, []
+    for i, name in enumerate(BIOME_NAMES, start=1):
+        labels[name] = i
+        colors.append(BIOME_COLORS[name])
+    labels[OUTSIDE] = len(BIOME_NAMES) + 1
+    colors.append("#dddddd")
+    return labels, mpl.colors.ListedColormap(colors)
+
+
+# --------------------------------------------------------------------------
 # Registry: classification name -> colormap/label provider
 # --------------------------------------------------------------------------
 CMAP_REGISTRY = {
@@ -643,6 +665,7 @@ CMAP_REGISTRY = {
     "Defaut96":  Defaut_cmap_1996,
     "Holdridge": Holdridge_cmap,
     "ThornFeddema05": ThornFeddema_cmap,
+    "Whittaker": Whittaker_cmap,
 }
 
 

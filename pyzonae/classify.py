@@ -26,10 +26,11 @@ from .classifiers import koeppen as _kg
 from .classifiers import defaut as _df
 from .classifiers import holdridge as _hl
 from .classifiers import thornfeddema as _tf
+from .classifiers import whittaker as _wk
 
 # Names accepted for typ_classification.
 CLASSIFICATIONS = ("kottek", "peel", "cannon", "trewartha", "Defaut96",
-                   "Holdridge", "ThornFeddema05")
+                   "Holdridge", "ThornFeddema05", "Whittaker")
 
 
 def classify_cell(typ_classification, arguments, **options):
@@ -65,6 +66,9 @@ def classify_cell(typ_classification, arguments, **options):
     if typ_classification == "ThornFeddema05":
         return _tf.get_thornfeddema_classification(
             arguments, factors=options.get("tf_factors", 2))
+    if typ_classification == "Whittaker":
+        key = _wk.get_whittaker_classification(arguments)
+        return key if key is not None else _wk.OUTSIDE
     raise ValueError(
         f"Unknown classification '{typ_classification}'. "
         f"Known: {CLASSIFICATIONS}"
