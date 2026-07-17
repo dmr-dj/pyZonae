@@ -77,6 +77,13 @@ def main():
                     help="diagram: do not encode the third axis as marker shape")
     ap.add_argument("--facet", action="store_true",
                     help="Defaut diagram: one panel per continentality band")
+    ap.add_argument("--colour-points", action="store_true",
+                    help="Whittaker diagram: colour each point by its biome "
+                         "instead of a neutral density")
+    ap.add_argument("--no-clip", action="store_true",
+                    help="Whittaker diagram: widen the axes to the data instead "
+                         "of framing on Whittaker's envelope (shows cells colder "
+                         "or wetter than any biome)")
     ap.add_argument("--point-size", type=float, default=None,
                     help="diagram: marker area (default 12 for Defaut, 14 for Holdridge)")
     ap.add_argument("--no-coastlines", action="store_true")
@@ -124,14 +131,19 @@ def main():
             tas_units=a.tas_units, pr_units=a.pr_units, pr_scale=a.pr_scale,
         )
         fields_args, _, _, _ = build_arguments(fields)
-        kw = {"markers": not a.no_markers}
+        kw = {}
         if a.point_size is not None:
             kw["point_size"] = a.point_size
         if a.classification == "Holdridge":
+            kw["markers"] = not a.no_markers
             kw["rule"] = a.holdridge_rule
             kw["hexagons"] = a.hexagons
-        else:
+        elif a.classification == "Defaut96":
+            kw["markers"] = not a.no_markers
             kw["facet"] = a.facet
+        elif a.classification == "Whittaker":
+            kw["colour_points_by_biome"] = a.colour_points
+            kw["clip_to_biomes"] = not a.no_clip
         fig, _ = plot_diagram(a.classification, m, fields_args, labels, cmap, **kw)
     elif a.classification == "Holdridge":
         # Holdridge zones are composite (region x belt x province), so a flat

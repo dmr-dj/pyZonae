@@ -30,6 +30,7 @@ The two schemes now share one pipeline. You pick the rule with a single option,
 | **`Defaut96`** | **Defaut (1996) bioclimatic stages**   |
 | **`Holdridge`** | **Holdridge life zones (Lugo et al. 1999)** |
 | **`ThornFeddema05`** | **Thornthwaite-Feddema (2005), water-balance; palaeo-ready** |
+| **`Whittaker`** | **Whittaker (1970) biomes, nine classes in (T, precip)** |
 
 ## Install
 
@@ -209,6 +210,7 @@ pyzonae/
 ├── decision_space.py       #   Defaut in (Qn2, T): boundary curves clipped by
 │                           #     probing the tree; two panels (annual mean / tc)
 ├── holdridge_triangle.py   #   Holdridge's triangular, hexagon-tiled diagram
+├── whittaker_diagram.py    #   Whittaker's biome polygons + the data point cloud
 │
 └── legend_grid.py          # UNUSED: a Botti-style grid legend for Defaut, kept
                             #   as an alternative to the decision-space diagram
@@ -226,10 +228,11 @@ Two plotting families, and the distinction matters:
 
 * **Maps** (`plotting.py`, `plotting_holdridge.py`) — where each class falls on
   the globe. Every classification has one.
-* **Decision-space diagrams** (`diagrams.py` and the two modules under it) — why:
-  each cell placed at its coordinates in the classifying variables, with the
-  boundaries drawn from the classifier's own functions. Only `Defaut96` and
-  `Holdridge` have one; see the section above for why Köppen-Geiger cannot.
+* **Decision-space diagrams** (`diagrams.py` and the three modules under it) —
+  why: each cell placed at its coordinates in the classifying variables, with the
+  boundaries drawn from the classifier's own functions or polygons. `Defaut96`,
+  `Holdridge` and `Whittaker` have one; see the section above for why
+  Köppen-Geiger cannot.
 
 ### How a classifier plugs in
 
@@ -258,6 +261,15 @@ Thornthwaite-Feddema added a third pattern:
   `run_classification` and `build_arguments`; absent, it defaults to present-day,
   so nothing changes for the other schemes. This is the same "optional hook with
   a sensible default" pattern as Holdridge's frost line.
+
+Whittaker added a fourth:
+
+* **It came with bulky reference data.** Most classifiers embed their tables as
+  constants in the classifier module itself (see `holdridge.py`). Whittaker's 775
+  polygon vertices would swamp the logic, so they live in a companion data module
+  `classifiers/whittaker_data.py` next to `whittaker.py` — separated from the
+  logic, but kept with the other classification-specific code rather than at the
+  package top level (which is reserved for shared machinery like `orbital.py`).
 
 If a scheme also has a low-dimensional decision space, add a plotter and register
 it in `diagrams.py`. Not every scheme does — see above.
@@ -350,11 +362,12 @@ choice — unlike Köppen and Defaut, which are seasonality-aware.
 
 ## Decision-space diagrams
 
-Besides the map, `Defaut96` and `Holdridge` can be drawn in the space of their
-own classifying variables. A map shows *where* each class lands; the diagram
-shows *why*: every grid cell sits at its coordinates in the classifying
-variables, and the decision boundaries are drawn on top — generated directly from
-the classifier's functions, so they cannot drift out of step with the code.
+Besides the map, `Defaut96`, `Holdridge` and `Whittaker` can be drawn in the
+space of their own classifying variables. A map shows *where* each class lands;
+the diagram shows *why*: every grid cell sits at its coordinates in the
+classifying variables, and the decision boundaries are drawn on top — generated
+directly from the classifier's functions or polygons, so they cannot drift out of
+step with the code.
 
 ```bash
 # Defaut in (Qn2, temperature)
@@ -365,6 +378,10 @@ python scripts/classify_map.py --classification Defaut96 \
 python scripts/classify_map.py --classification Holdridge \
     --tas t.nc --pr p.nc --sftlf m.nc --orog o.nc \
     --diagram --hexagons --save holdridge_triangle.png
+
+# Whittaker: the biome polygons with the dataset's cells scattered on top
+python scripts/classify_map.py --classification Whittaker \
+    --tas t.nc --pr p.nc --sftlf m.nc --diagram --save whittaker_diagram.png
 ```
 
 Or from Python:
@@ -379,9 +396,20 @@ args, _, _, _ = build_arguments(fields)
 fig, ax = plot_diagram("Holdridge", m, args, labels, cmap, hexagons=True)
 ```
 
-### Why the two diagrams have different geometries
+### Why the three diagrams have different geometries
 
 This is forced by the mathematics of each scheme, not by taste.
+
+**Whittaker** is the simplest: its decision space *is* the raw data plane, mean
+annual temperature against annual precipitation, with no index to derive and no
+projection. The diagram is just his biome polygons (the plotbiomes digitization,
+in the official Ricklefs colours) with the dataset's cells scattered on top — the
+most faithful of the three, since the polygons are exactly the boundaries the
+classifier tests. Because a global model reaches temperatures far colder than any
+vegetated biome, the axes are framed on Whittaker's envelope by default and cells
+outside it are counted rather than dropped (`clip_to_biomes=False` widens to the
+data). Points can be shown as a neutral density or coloured by biome
+(`--colour-points`).
 
 **Holdridge** has an exact constraint, `PETR = Tbio × 58.93 / P`, which is linear
 in logarithms: `log(PETR) + log(P) − log(Tbio) = log(58.93)`. The three axes
@@ -489,6 +517,44 @@ dormant seasons contribute little to annual PE. The moisture index is then
 inflated, and a large share of high-latitude land classifies as `Saturated`.
 This is a property of the method — Feddema notes it in the paper — not an
 implementation artifact.
+
+## Whittaker biomes (1970)
+
+`Whittaker` places the nine major terrestrial biomes directly in the plane of
+mean annual temperature and annual precipitation. Unlike the other schemes, whose
+classes come from thresholds or derived indices, Whittaker drew his boundaries by
+hand from observed vegetation — so classification is a **point-in-polygon** test,
+not a comparison against bounds.
+
+```bash
+python scripts/classify_map.py --classification Whittaker \
+    --tas t.nc --pr p.nc --sftlf m.nc --save whittaker.png
+```
+
+The nine biomes and their boundaries are the `plotbiomes` digitization of Figure
+5.5 in Ricklefs (2008) — itself a modified version of Whittaker's Figure 4.10 —
+carried verbatim in `classifiers/whittaker_data.py` (775 polygon vertices and the
+official Ricklefs biome colours). No R or `pyreadr` dependency is needed at
+runtime; the coordinates are frozen as plain Python.
+
+Two behaviours worth knowing:
+
+* **Gap filling.** The digitized polygons do not perfectly tile the plane: narrow
+  gaps sit between adjacent biomes (e.g. near −11 °C, 45 cm, between Tundra and
+  Boreal forest), and real cells land in them. A cell that misses every polygon
+  but lies within a short distance of one is snapped to the nearest biome, which
+  fills these digitization artifacts. The distance mixes °C and cm, so it is a
+  pragmatic snapping tolerance rather than a physical metric; it is capped
+  (`DEFAULT_FILL_TOLERANCE`) and can be disabled with `fill_tolerance=0`.
+* **Outside the envelope.** Whittaker's diagram stops where vegetation does. A
+  global model reaches temperatures far colder than any biome (ice sheets), so on
+  such data a large share of high-latitude cells classify as *Outside Whittaker
+  diagram*. Restricted to the vegetated latitude band this is marginal (a few
+  percent); the bulk of it is the polar ice caps, which is correct, not a bug.
+
+Whittaker himself cautioned that the diagram is "a considerable simplification"
+and its boundaries "approximate", shiftable by maritime effects, soil and fire.
+The coarseness is a property of the scheme.
 
 ## Gaussen driest-3-months (a note on temperature units)
 
