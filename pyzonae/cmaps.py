@@ -639,10 +639,10 @@ def Whittaker_cmap():
     """Labels and colours for the Whittaker biome classification.
 
     Uses the official Ricklefs (2008) biome colours carried in
-    :mod:`pyzonae.whittaker_data`, in the canonical biome order, plus a neutral
+    :mod:`pyzonae.classifiers.whittaker_data`, in the canonical biome order, plus a neutral
     grey for cells that fall outside the diagram.
     """
-    from .whittaker_data import BIOME_NAMES, BIOME_COLORS
+    from .classifiers.whittaker_data import BIOME_NAMES, BIOME_COLORS
     from .classifiers.whittaker import OUTSIDE
 
     labels, colors = {}, []

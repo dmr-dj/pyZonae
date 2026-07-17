@@ -688,19 +688,39 @@ def test_whittaker_reference_points():
 
 
 def test_whittaker_outside_diagram():
-    """Points beyond the vegetated envelope fall outside the diagram."""
+    """Points far beyond the vegetated envelope fall outside the diagram.
+
+    Gap-filling only snaps points that are *close* to a polygon, so genuinely
+    out-of-envelope points (very cold, very hot) stay OUTSIDE regardless.
+    """
     from pyzonae.classifiers.whittaker import biome_of, OUTSIDE
     assert biome_of(-40, 15) == OUTSIDE     # far too cold (ice sheet)
-    assert biome_of(30, 1) == OUTSIDE       # hotter/drier than any biome
+    assert biome_of(40, 1) == OUTSIDE       # hotter than any biome (well beyond)
     # NaN propagates to None.
     assert biome_of(float("nan"), 50) is None
+
+
+def test_whittaker_gap_filling():
+    """Cells in digitization gaps are snapped to the nearest biome.
+
+    The plotbiomes polygons leave narrow gaps between adjacent biomes (e.g. near
+    -11 degC, 45 cm, between Tundra and Boreal forest). Real cells land there;
+    with the default tolerance they are assigned to the nearest biome, and with
+    tolerance 0 they revert to OUTSIDE.
+    """
+    from pyzonae.classifiers.whittaker import biome_of, OUTSIDE
+    # A known Siberian-type gap point.
+    assert biome_of(-11.0, 45.0, fill_tolerance=0) == OUTSIDE
+    assert biome_of(-11.0, 45.0, fill_tolerance=5) == "Tundra"
+    # A far-outside point is not rescued by filling.
+    assert biome_of(-40.0, 15.0, fill_tolerance=5) == OUTSIDE
 
 
 def test_whittaker_polygons_do_not_overlap():
     """The plotbiomes digitization is a clean partition: no point in two biomes."""
     import numpy as np
     from matplotlib.path import Path
-    from pyzonae.whittaker_data import BIOME_POLYGONS, BIOME_NAMES
+    from pyzonae.classifiers.whittaker_data import BIOME_POLYGONS, BIOME_NAMES
     paths = {b: Path(np.asarray(v)) for b, v in BIOME_POLYGONS.items()}
     rng = np.random.default_rng(0)
     # Sample the covered box and check no point is claimed by two polygons.
@@ -724,7 +744,7 @@ def test_whittaker_unit_conversion_mm_to_cm():
 
 def test_whittaker_runs_on_synthetic(data_dir):
     """End-to-end run produces only known biome labels."""
-    from pyzonae.whittaker_data import BIOME_NAMES
+    from pyzonae.classifiers.whittaker_data import BIOME_NAMES
     from pyzonae.classifiers.whittaker import OUTSIDE
     m, labels, _, _, _ = run_classification(
         "Whittaker",
