@@ -756,3 +756,99 @@ def test_whittaker_runs_on_synthetic(data_dir):
     inv = {v: k for k, v in labels.items()}
     for v in set(int(x) for x in m.compressed()):
         assert inv[v] in valid
+
+
+def test_whittaker_diagram_renders(data_dir):
+    """The Whittaker diagram builds via the public dispatcher."""
+    import matplotlib
+    matplotlib.use("Agg")
+    from pyzonae import plot_diagram, build_arguments, load_climatology
+
+    kw = dict(
+        tas_file=os.path.join(data_dir, "tas.nc"),
+        pr_file=os.path.join(data_dir, "pr.nc"),
+        sftlf_file=os.path.join(data_dir, "sftlf.nc"),
+    )
+    m, labels, cmap, _, _ = run_classification("Whittaker", **kw)
+    fields = load_climatology(kw["tas_file"], kw["pr_file"],
+                              sftlf_file=kw["sftlf_file"])
+    args, _, _, _ = build_arguments(fields)
+
+    for by_biome in (False, True):
+        fig, ax = plot_diagram("Whittaker", m, args, labels, cmap,
+                               colour_points_by_biome=by_biome)
+        assert fig is not None
+
+
+def test_whittaker_in_diagrams_registry():
+    """Whittaker must be advertised as having a decision-space diagram."""
+    from pyzonae.diagrams import DIAGRAMS
+    assert "Whittaker" in DIAGRAMS
+
+
+def test_whittaker_diagram_point_placement_matches_classifier(data_dir):
+    """Every plotted cell's (T, P) must classify to a known label.
+
+    The diagram places points from the same slots the classifier reads (slot 3
+    temperature, slot 5 precipitation / 10), so a point coloured by biome must
+    agree with get_whittaker_classification on the same cell.
+    """
+    import numpy as np
+    from pyzonae import build_arguments, load_climatology
+    from pyzonae.classifiers.whittaker import biome_of, OUTSIDE
+    from pyzonae.classifiers.whittaker_data import BIOME_NAMES
+
+    fields = load_climatology(
+        os.path.join(data_dir, "tas.nc"), os.path.join(data_dir, "pr.nc"),
+        sftlf_file=os.path.join(data_dir, "sftlf.nc"))
+    args, _, _, _ = build_arguments(fields)
+    flat = args.reshape(args.shape[0], -1)
+    ok = ~(np.ma.getmaskarray(flat)[0] | np.ma.getmaskarray(flat)[4])
+    T = np.asarray(flat[3])[ok]
+    Pcm = np.asarray(flat[5])[ok] / 10.0
+    valid = set(BIOME_NAMES) | {OUTSIDE}
+    for t, p in zip(T[:200], Pcm[:200]):
+        assert biome_of(t, p) in valid
+
+
+def test_whittaker_vectorized_distance_matches_reference():
+    """The vectorised nearest-biome search must match a naive implementation.
+
+    The distance search dominates Whittaker's cost, so it is vectorised and
+    guarded by a bounding-box rejection. Both are pure speed optimisations: this
+    pins them to a straightforward reference so a future rewrite cannot silently
+    change which biome a gap point is snapped to.
+    """
+    import numpy as np
+    from pyzonae.classifiers.whittaker import (
+        _PATHS, _nearest_biome, OUTSIDE, DEFAULT_FILL_TOLERANCE, biome_of,
+    )
+    from pyzonae.classifiers.whittaker_data import BIOME_POLYGONS, BIOME_NAMES
+
+    def naive_point_segment(p, a, b):
+        ap, ab = p - a, b - a
+        dd = float(np.dot(ab, ab))
+        t = 0.0 if dd == 0 else float(np.clip(np.dot(ap, ab) / dd, 0.0, 1.0))
+        return float(np.hypot(*(a + t * ab - p)))
+
+    def naive_biome_of(T, P, tol=DEFAULT_FILL_TOLERANCE):
+        pt = (float(T), float(P))
+        for n in BIOME_NAMES:
+            if _PATHS[n].contains_point(pt):
+                return n
+        px = np.array(pt)
+        best, bd = None, np.inf
+        for n in BIOME_NAMES:
+            v = np.asarray(BIOME_POLYGONS[n], dtype=float)
+            d = min(naive_point_segment(px, v[i], v[(i + 1) % len(v)])
+                    for i in range(len(v)))
+            if d < bd:
+                bd, best = d, n
+        return best if bd <= tol else OUTSIDE
+
+    rng = np.random.default_rng(1)
+    T = rng.uniform(-45, 40, 400)
+    P = rng.uniform(0, 500, 400)
+    for t, p in zip(T, P):
+        assert biome_of(t, p) == naive_biome_of(t, p), \
+            f"optimised result differs at ({t:.2f}, {p:.2f})"

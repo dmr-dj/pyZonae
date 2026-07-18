@@ -71,14 +71,43 @@ def _point_segment_distance(p, a, b):
     return float(np.hypot(*(a + t * ab - p)))
 
 
+# Precomputed segment arrays per biome, for the vectorised distance below.
+# For each biome: A = segment starts, AB = segment vectors, ABB = |AB|^2.
+def _segments(verts):
+    A = verts
+    B = np.roll(verts, -1, axis=0)
+    AB = B - A
+    return A, AB, np.einsum("ij,ij->i", AB, AB)
+
+
+_SEGS = {name: _segments(np.asarray(v, dtype=float))
+         for name, v in BIOME_POLYGONS.items()}
+
+# Bounding box of every polygon, used to reject hopeless points cheaply.
+_ALL_VERTS = np.vstack([np.asarray(v, dtype=float)
+                        for v in BIOME_POLYGONS.values()])
+_BBOX = (_ALL_VERTS[:, 0].min(), _ALL_VERTS[:, 0].max(),
+         _ALL_VERTS[:, 1].min(), _ALL_VERTS[:, 1].max())
+
+
+def _distance_to_biome(name, t, p):
+    """Vectorised distance from a point to one biome polygon's boundary."""
+    A, AB, abb = _SEGS[name]
+    px = np.array([t, p], dtype=float)
+    ap = px - A                                   # (n, 2)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        u = np.einsum("ij,ij->i", ap, AB) / abb
+    u = np.clip(np.nan_to_num(u), 0.0, 1.0)
+    closest = A + u[:, None] * AB
+    d = closest - px
+    return float(np.sqrt(np.min(np.einsum("ij,ij->i", d, d))))
+
+
 def _nearest_biome(temp_c, precip_cm):
     """Nearest biome polygon and the point's distance to its boundary."""
-    pt = np.array([temp_c, precip_cm], dtype=float)
     best, best_d = None, np.inf
     for name in BIOME_NAMES:
-        v = _VERTS[name]
-        d = min(_point_segment_distance(pt, v[i], v[(i + 1) % len(v)])
-                for i in range(len(v)))
+        d = _distance_to_biome(name, temp_c, precip_cm)
         if d < best_d:
             best_d, best = d, name
     return best, best_d
@@ -105,6 +134,14 @@ def biome_of(temp_c, precip_cm, fill_tolerance=DEFAULT_FILL_TOLERANCE):
         if _PATHS[name].contains_point(point):
             return name
     if fill_tolerance and fill_tolerance > 0:
+        # Cheap rejection first: a point well outside the overall bounding box
+        # cannot be within tolerance of any polygon, and the distance search is
+        # by far the most expensive step.
+        tmin, tmax, pmin, pmax = _BBOX
+        if (point[0] < tmin - fill_tolerance or point[0] > tmax + fill_tolerance
+                or point[1] < pmin - fill_tolerance
+                or point[1] > pmax + fill_tolerance):
+            return OUTSIDE
         name, dist = _nearest_biome(point[0], point[1])
         if dist <= fill_tolerance:
             return name
