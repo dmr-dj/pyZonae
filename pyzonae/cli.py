@@ -26,7 +26,10 @@ from pyzonae.derive import build_arguments
 
 def main():
     ap = argparse.ArgumentParser(description="Gridded climate classification.")
-    ap.add_argument("--classification", required=True, choices=CLASSIFICATIONS)
+    ap.add_argument("--classification", required=True,
+                    choices=tuple(CLASSIFICATIONS) + ("all",),
+                    help="classification to run, or 'all' to run every one and "
+                         "write one output per scheme (see --save)")
     ap.add_argument("--tas", required=True, help="monthly temperature NetCDF")
     ap.add_argument("--pr", required=True, help="monthly precipitation NetCDF")
     ap.add_argument("--sftlf", default=None, help="land-fraction NetCDF (optional)")
@@ -101,6 +104,9 @@ def main():
             perihelion_longitude=a.perihelion_longitude if a.perihelion_longitude is not None else defaults.perihelion_longitude,
         )
 
+    if a.classification == "all":
+        return _run_all(a, orbital)
+
     m, labels, cmap, lons, lats = run_classification(
         typ_classification=a.classification,
         tas_file=a.tas, pr_file=a.pr, sftlf_file=a.sftlf,
@@ -169,3 +175,67 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def _run_all(a, orbital):
+    """Run every classification on one dataset and write one output per scheme.
+
+    Loading and deriving happen once (see
+    :func:`pyzonae.run.run_all_classifications`), which is where nearly all the
+    time goes; classifying eight times on the shared index stack is cheap.
+
+    Output naming: ``--save`` is treated as a template. ``maps/out.png`` becomes
+    ``maps/out_peel.png``, ``maps/out_Defaut96.png`` and so on; without an
+    extension the classification name is simply appended. Without ``--save``
+    nothing is written and only a summary is printed.
+    """
+    import os
+    import matplotlib.pyplot as plt
+    from pyzonae.run import run_all_classifications
+
+    results = run_all_classifications(
+        a.tas, a.pr,
+        sftlf_file=a.sftlf, sftlf_var=a.sftlf_var,
+        tas_var=a.tas_var, pr_var=a.pr_var,
+        orog_file=a.orog, orog_var=a.orog_var,
+        tas_units=a.tas_units, pr_units=a.pr_units, pr_scale=a.pr_scale,
+        frost_line=a.frost_line, frost_threshold=a.frost_threshold,
+        holdridge_rule=a.holdridge_rule, tf_factors=a.tf_factors,
+        orbital=orbital,
+    )
+    lons, lats = results.pop("_lons"), results.pop("_lats")
+
+    skipped = [n for n in CLASSIFICATIONS if n not in results]
+    if skipped:
+        print(f"skipped (missing inputs): {', '.join(skipped)}")
+
+    root, ext = os.path.splitext(a.save) if a.save else (None, "")
+    for typ, (m, labels, cmap) in results.items():
+        n_classes = len(set(int(v) for v in m.compressed()))
+        print(f"{typ:16s} {m.count():7d} cells, {n_classes:3d} classes")
+        if not a.save:
+            continue
+        if a.diagram:
+            if typ not in DIAGRAMS:
+                continue
+            fields = load_climatology(
+                a.tas, a.pr, tas_var=a.tas_var, pr_var=a.pr_var,
+                sftlf_file=a.sftlf, sftlf_var=a.sftlf_var,
+                orog_file=a.orog, orog_var=a.orog_var,
+                tas_units=a.tas_units, pr_units=a.pr_units, pr_scale=a.pr_scale,
+            )
+            fields_args, _, _, _ = build_arguments(fields, orbital=orbital)
+            fig, _ = plot_diagram(typ, m, fields_args, labels, cmap)
+        elif typ == "Holdridge":
+            fig, _ = plot_holdridge(m, lons, lats, labels, cmap,
+                                    title=f"{typ} classification",
+                                    coastlines=not a.no_coastlines)
+        else:
+            fig, _ = plot_classification(m, lons, lats, labels, cmap,
+                                         title=f"{typ} classification",
+                                         coastlines=not a.no_coastlines)
+        out = f"{root}_{typ}{ext}"
+        fig.savefig(out, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        print(f"  saved {out}")
+    return 0

@@ -852,3 +852,79 @@ def test_whittaker_vectorized_distance_matches_reference():
     for t, p in zip(T, P):
         assert biome_of(t, p) == naive_biome_of(t, p), \
             f"optimised result differs at ({t:.2f}, {p:.2f})"
+
+
+# --- run_all_classifications ----------------------------------------------
+
+def test_run_all_matches_individual_runs(data_dir):
+    """Running everything at once must equal running each one separately.
+
+    run_all_classifications shares the load and the derivation across schemes
+    (which is where nearly all the time goes). That optimisation must not change
+    any result.
+    """
+    from pyzonae.run import run_all_classifications
+
+    kw = dict(
+        sftlf_file=os.path.join(data_dir, "sftlf.nc"),
+        orog_file=os.path.join(data_dir, "orog.nc"),
+    )
+    tas = os.path.join(data_dir, "tas.nc")
+    pr = os.path.join(data_dir, "pr.nc")
+
+    results = run_all_classifications(tas, pr, **kw)
+    for typ in [k for k in results if not k.startswith("_")]:
+        m_all, labels, cmap = results[typ]
+        m_ref, _, _, _, _ = run_classification(
+            typ, tas_file=tas, pr_file=pr, **kw)
+        assert np.array_equal(m_ref.filled(-1), m_all.filled(-1)), \
+            f"{typ} differs between run_all and individual run"
+
+
+def test_run_all_covers_every_classification(data_dir):
+    """With all inputs supplied, every classification must be produced."""
+    from pyzonae.run import run_all_classifications
+    from pyzonae.classify import CLASSIFICATIONS
+
+    results = run_all_classifications(
+        os.path.join(data_dir, "tas.nc"), os.path.join(data_dir, "pr.nc"),
+        sftlf_file=os.path.join(data_dir, "sftlf.nc"),
+        orog_file=os.path.join(data_dir, "orog.nc"),
+    )
+    produced = {k for k in results if not k.startswith("_")}
+    assert produced == set(CLASSIFICATIONS)
+
+
+def test_run_all_skips_schemes_missing_inputs(data_dir):
+    """Without orography, Holdridge is skipped rather than crashing."""
+    from pyzonae.run import run_all_classifications
+
+    results = run_all_classifications(
+        os.path.join(data_dir, "tas.nc"), os.path.join(data_dir, "pr.nc"),
+        sftlf_file=os.path.join(data_dir, "sftlf.nc"),
+    )
+    assert "Holdridge" not in results
+    assert "peel" in results and "Whittaker" in results
+
+    # With skip_unavailable=False the caller gets a clear error instead.
+    with pytest.raises(ValueError, match="orog"):
+        run_all_classifications(
+            os.path.join(data_dir, "tas.nc"), os.path.join(data_dir, "pr.nc"),
+            sftlf_file=os.path.join(data_dir, "sftlf.nc"),
+            skip_unavailable=False)
+
+
+def test_run_all_only_subset(data_dir):
+    """The 'only' argument restricts which schemes run."""
+    from pyzonae.run import run_all_classifications
+    results = run_all_classifications(
+        os.path.join(data_dir, "tas.nc"), os.path.join(data_dir, "pr.nc"),
+        sftlf_file=os.path.join(data_dir, "sftlf.nc"),
+        only=["peel", "Whittaker"])
+    produced = {k for k in results if not k.startswith("_")}
+    assert produced == {"peel", "Whittaker"}
+
+    with pytest.raises(ValueError, match="Unknown classification"):
+        run_all_classifications(
+            os.path.join(data_dir, "tas.nc"), os.path.join(data_dir, "pr.nc"),
+            only=["nonexistent"])

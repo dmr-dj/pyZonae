@@ -142,6 +142,36 @@ python scripts/classify_map.py --classification Defaut96 \
 
 ## Library use
 
+### Running every classification at once
+
+`--classification all` runs all of them on one dataset. Loading and deriving the
+shared indices is where nearly all the time goes (roughly 3 s against 0.2-0.8 s
+per scheme), so this does that work once instead of once per classification —
+about 16x faster than looping over `run_classification`.
+
+```bash
+# writes out_kottek.png, out_peel.png, out_Defaut96.png, ...
+python scripts/classify_map.py --classification all \
+    --tas t.nc --pr p.nc --sftlf m.nc --orog o.nc --save out.png
+```
+
+`--save` acts as a template: the classification name is inserted before the
+extension. Without `--save` only a summary is printed. Schemes whose extra inputs
+are missing (Holdridge without `--orog`) are skipped with a note rather than
+failing the run.
+
+From Python, `run_all_classifications` returns `{name: (class_map, labels,
+cmap)}` plus the coordinates:
+
+```python
+from pyzonae import run_all_classifications
+
+results = run_all_classifications(tas, pr, sftlf_file=msk, orog_file=oro)
+lons, lats = results.pop("_lons"), results.pop("_lats")
+for name, (class_map, labels, cmap) in results.items():
+    ...
+```
+
 ### Input files
 
 Inputs are monthly climatologies of temperature and precipitation on a common

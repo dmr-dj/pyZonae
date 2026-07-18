@@ -37,9 +37,10 @@ Same idea, two geometries, each forced by the mathematics of the scheme.
 
 from .decision_space import plot_defaut_space
 from .holdridge_triangle import plot_holdridge_triangle
+from .whittaker_diagram import plot_whittaker_diagram
 
 # Which classifications have a decision-space diagram.
-DIAGRAMS = ("Defaut96", "Holdridge")
+DIAGRAMS = ("Defaut96", "Holdridge", "Whittaker")
 
 
 def plot_diagram(typ_classification, class_map, fields_args, label_dict, cmap,
@@ -48,7 +49,7 @@ def plot_diagram(typ_classification, class_map, fields_args, label_dict, cmap,
 
     Parameters
     ----------
-    typ_classification : {"Defaut96", "Holdridge"}
+    typ_classification : {"Defaut96", "Holdridge", "Whittaker"}
     class_map : masked 2-D array of class indices (from ``run_classification``)
     fields_args : the derived-index stack (from ``build_arguments``)
     label_dict, cmap : the vocabulary and colours for that classification
@@ -59,6 +60,8 @@ def plot_diagram(typ_classification, class_map, fields_args, label_dict, cmap,
                      ``qn2_max``
         Holdridge -- ``rule`` ({"fuzzy", "strict"}), ``hexagons`` (bool),
                      ``markers`` (bool), ``point_size``
+        Whittaker -- ``colour_points_by_biome`` (bool), ``clip_to_biomes``
+                     (bool), ``point_size``
 
     Returns
     -------
@@ -78,6 +81,9 @@ def plot_diagram(typ_classification, class_map, fields_args, label_dict, cmap,
     if typ_classification == "Holdridge":
         return plot_holdridge_triangle(class_map, fields_args, label_dict, cmap,
                                        **kwargs)
+    if typ_classification == "Whittaker":
+        return plot_whittaker_diagram(class_map, fields_args, label_dict, cmap,
+                                      **kwargs)
     raise ValueError(
         f"No decision-space diagram for '{typ_classification}'. "
         f"Available: {DIAGRAMS}. The Koeppen-Geiger variants classify on many "

@@ -42,14 +42,14 @@ the decision boundaries on top::
 
 from .classify import classify_cell, CLASSIFICATIONS
 from .cmaps import get_cmap
-from .run import run_classification
+from .run import run_classification, run_all_classifications
 from .derive import build_arguments
 from .io import load_climatology
 from .diagrams import plot_diagram, plot_cross_diagram, DIAGRAMS
 from .orbital import OrbitalParameters
 
 __all__ = [
-    "classify_cell", "CLASSIFICATIONS", "get_cmap", "run_classification",
+    "classify_cell", "CLASSIFICATIONS", "get_cmap", "run_classification", "run_all_classifications",
     "build_arguments", "load_climatology", "plot_diagram",
     "plot_cross_diagram", "DIAGRAMS", "OrbitalParameters",
 ]
