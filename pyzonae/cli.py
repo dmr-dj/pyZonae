@@ -23,7 +23,6 @@ from pyzonae.diagrams import plot_diagram, DIAGRAMS
 from pyzonae.io import load_climatology
 from pyzonae.derive import build_arguments
 
-
 def main():
     ap = argparse.ArgumentParser(description="Gridded climate classification.")
     ap.add_argument("--classification", required=True,

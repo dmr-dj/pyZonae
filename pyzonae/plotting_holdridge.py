@@ -95,7 +95,10 @@ def plot_holdridge(class_map, lons, lats, label_dict, cmap,
     from matplotlib.colors import ListedColormap
     small_cmap = ListedColormap(picked)
 
+    # See plotting.py: masked_all leaves .data uninitialised, and Normalize
+    # touches .data before the mask is applied.
     remapped = np.ma.masked_all(class_map.shape, dtype=float)
+    remapped.data[...] = 0.0
     for v, slot in value_to_slot.items():
         remapped[class_map == v] = slot
     remapped.mask = np.ma.getmaskarray(class_map)

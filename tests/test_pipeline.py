@@ -928,3 +928,69 @@ def test_run_all_only_subset(data_dir):
         run_all_classifications(
             os.path.join(data_dir, "tas.nc"), os.path.join(data_dir, "pr.nc"),
             only=["nonexistent"])
+
+
+def test_no_shadowing_local_imports():
+    """A local `import numpy as np` inside a function that also has a
+    module-level import makes `np` local to the whole function, so any use
+    *before* that line raises UnboundLocalError. This bit us once in
+    plotting.py; catch it automatically rather than at runtime.
+    """
+    import ast
+    import pathlib
+
+    pkg = pathlib.Path(__file__).resolve().parent.parent / "pyzonae"
+    offenders = []
+    for path in sorted(pkg.rglob("*.py")):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        # Names imported at module level.
+        module_level = set()
+        for node in tree.body:
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    module_level.add(alias.asname or alias.name.split(".")[0])
+        # Any function-local import of one of those names shadows it.
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for sub in ast.walk(node):
+                if isinstance(sub, (ast.Import, ast.ImportFrom)):
+                    for alias in sub.names:
+                        name = alias.asname or alias.name.split(".")[0]
+                        if name in module_level:
+                            offenders.append(
+                                f"{path.name}:{sub.lineno} '{name}' in {node.name}()")
+    assert not offenders, (
+        "local imports shadowing a module-level import:\n  "
+        + "\n  ".join(offenders))
+
+
+def test_plotting_no_garbage_under_mask(data_dir):
+    """Masked cells must not carry non-finite or huge values in .data.
+
+    plot_classification builds its colour array with np.ma.masked_all, which
+    leaves the underlying .data uninitialised. Matplotlib's Normalize does
+    `resdat -= vmin` on .data *before* the mask is applied, so leftover memory
+    (a NetCDF _FillValue of 1e20, say) raised "invalid value encountered in
+    subtract" — non-deterministically, since it depends on the allocator. The
+    array is now explicitly initialised; this pins that.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from pyzonae.plotting import plot_classification
+
+    for typ in ("kottek", "cannon", "Whittaker"):
+        m, labels, cmap, lons, lats = run_classification(
+            typ,
+            tas_file=os.path.join(data_dir, "tas.nc"),
+            pr_file=os.path.join(data_dir, "pr.nc"),
+            sftlf_file=os.path.join(data_dir, "sftlf.nc"),
+        )
+        # Rendering with floating-point errors raised is the actual regression
+        # test: the old code raised FloatingPointError here.
+        with np.errstate(invalid="raise", over="raise"):
+            fig, ax = plot_classification(m, lons, lats, labels, cmap,
+                                          title=typ, coastlines=False)
+            fig.canvas.draw()
+            plt.close(fig)

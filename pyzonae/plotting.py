@@ -81,7 +81,14 @@ def plot_classification(class_map, lons, lats, label_dict, cmap,
         picked = [cmap(full_slot[v]) for v in ordered_values]
         cmap = mcolors.ListedColormap(picked)
 
+    # np.ma.masked_all leaves the underlying .data uninitialised, so masked
+    # cells hold whatever was in memory -- sometimes a NetCDF _FillValue like
+    # 1e20. Matplotlib's Normalize operates on .data *before* applying the mask,
+    # so that garbage can raise "invalid value encountered in subtract"
+    # non-deterministically (it depends on what the allocator handed back).
+    # Initialise to a finite in-range value instead; the mask still hides them.
     remapped = np.ma.masked_all(class_map.shape, dtype=float)
+    remapped.data[...] = 0.0
     for v, slot in value_to_slot.items():
         remapped[class_map == v] = slot
     remapped.mask = np.ma.getmaskarray(class_map)

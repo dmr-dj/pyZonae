@@ -307,7 +307,6 @@ def plot_defaut_with_grid(class_map, lons, lats, label_dict, cmap,
 
     Only the classes present on the map are shown in the grid, as Botti does.
     """
-    import numpy as np
     try:
         import cartopy.crs as ccrs
         has_cartopy = True
@@ -324,6 +323,7 @@ def plot_defaut_with_grid(class_map, lons, lats, label_dict, cmap,
     small = ListedColormap([cmap(slot[v]) for v in used_vals])
     remap = {v: i for i, v in enumerate(used_vals)}
     m2 = np.ma.masked_all(class_map.shape, dtype=float)
+    m2.data[...] = 0.0                  # see plotting.py: avoid garbage in .data
     for v, i in remap.items():
         m2[class_map == v] = i
     m2.mask = np.ma.getmaskarray(class_map)
