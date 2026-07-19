@@ -56,7 +56,6 @@ def _maxminsum_slice(mon, lo, hi):
     doubled = np.concatenate([mon, mon], axis=0)
     sl = doubled[12 + lo:12 + hi, ...]
     with np.errstate(invalid="ignore"):
-        import warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
             return np.nanmax(sl, axis=0), np.nanmin(sl, axis=0), np.nansum(sl, axis=0)
