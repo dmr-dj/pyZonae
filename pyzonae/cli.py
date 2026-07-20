@@ -23,6 +23,7 @@ from pyzonae.diagrams import plot_diagram, DIAGRAMS
 from pyzonae.io import load_climatology
 from pyzonae.derive import build_arguments
 
+
 def main():
     ap = argparse.ArgumentParser(description="Gridded climate classification.")
     ap.add_argument("--classification", required=True,
@@ -55,8 +56,8 @@ def main():
                     help="ThornFeddema05: longitude of perihelion in degrees "
                          "(default 282.9)")
     ap.add_argument("--tf-factors", type=int, default=2, choices=[2, 4],
-                    help="ThornFeddema05: 2 factors (moisture x thermal, default) "
-                         "or 4 (adds seasonality; not yet implemented)")
+                    help="ThornFeddema05: 2 factors (moisture x thermal, "
+                         "default) or 4 (adds seasonality and its cause)")
     ap.add_argument("--tas-var", default=None,
                     help="temperature variable name (default: auto-detect tas/t2m/tmp/...)")
     ap.add_argument("--pr-var", default=None,

@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyZonae"
-version = "0.1.0"
+version = "1.2.0"
 description = "Gridded climate classification with pluggable rule sets (Köppen-Geiger variants and Defaut 1996)."
 readme = "README.md"
 requires-python = ">=3.9"
